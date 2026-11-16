@@ -1,0 +1,6 @@
+{"id": "mm01", "text": "这张照片拍摄于2020年东京奥运会现场。", "label": "refuted", "source": "synthetic-multimodal"}
+{"id": "mm02", "text": "世卫组织建议成年人每周至少进行150分钟中等强度运动。", "label": "supported", "source": "synthetic-multimodal"}
+{"id": "mm03", "text": "这张小票显示本次消费总额为500元。", "label": "refuted", "source": "synthetic-multimodal"}
+{"id": "mm04", "text": "这张小票显示本次消费总额为128美元。", "label": "supported", "source": "synthetic-multimodal"}
+{"id": "mm05", "text": "这张新闻截图证实本市马拉松于2024年举办。", "label": "refuted", "source": "synthetic-multimodal"}
+{"id": "mm06", "text": "这张交通标志照片显示该路段限速60公里每小时。", "label": "supported", "source": "synthetic-multimodal"}

@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>内容可信度核查 · M3</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; background: #0f1420; color: #e6e9f0; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: #8b93a7; font-size: 13px; margin-bottom: 24px; }
+  textarea { width: 100%; min-height: 110px; background: #171e2e; color: #e6e9f0; border: 1px solid #2a3348; border-radius: 8px; padding: 12px; font-size: 14px; resize: vertical; }
+  .row { display: flex; gap: 12px; align-items: center; margin-top: 12px; }
+  input[type=file] { color: #8b93a7; font-size: 13px; }
+  button { background: #3b82f6; border: none; color: #fff; padding: 10px 22px; border-radius: 8px; font-size: 14px; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  .timeline { margin-top: 28px; display: none; }
+  .stage { display: flex; gap: 10px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid #1d2536; font-size: 14px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #3a4358; flex: none; }
+  .stage.running .dot { background: #f59e0b; animation: pulse 1s infinite; }
+  .stage.done .dot { background: #22c55e; }
+  .stage.skipped .dot { background: #64748b; }
+  @keyframes pulse { 50% { opacity: .4; } }
+  .detail { color: #8b93a7; font-size: 12px; margin-left: auto; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .result { margin-top: 24px; background: #171e2e; border: 1px solid #2a3348; border-radius: 8px; padding: 16px; display: none; }
+  .verdict { font-size: 18px; font-weight: 600; }
+  pre { white-space: pre-wrap; word-break: break-all; color: #8b93a7; font-size: 12px; }
+  .forensics { margin-top: 14px; padding: 12px; background: #131a29; border: 1px solid #2a3348; border-radius: 8px; }
+  .forensics h3 { margin: 0 0 8px; font-size: 14px; }
+  .forensics .field { font-size: 13px; margin: 6px 0; color: #c3c9d6; }
+  .forensics .field b { color: #8b93a7; font-weight: 600; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; margin-left: 6px; }
+  .badge.consistent { background: #14532d; color: #86efac; }
+  .badge.inconsistent { background: #7f1d1d; color: #fca5a5; }
+  .badge.uncertain { background: #334155; color: #cbd5e1; }
+  .claimline { font-size: 12px; color: #8b93a7; margin: 3px 0; }
+  .img-preview { max-height: 120px; border-radius: 8px; border: 1px solid #2a3348; margin-top: 10px; display: none; }
+  .route { font-size: 12px; color: #f59e0b; margin-top: 4px; }
+  .graphbox { margin-top: 14px; padding: 12px; background: #131a29; border: 1px solid #2a3348; border-radius: 8px; }
+  .graphbox h3 { margin: 0 0 8px; font-size: 14px; }
+  #cy { height: 300px; background: #0f1420; border-radius: 6px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; font-size: 12px; color: #8b93a7; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .swatch.line { height: 3px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>多模态内容可信度核查</h1>
+  <div class="sub">M3 多模态流水线 · 断言拆解 → VLM 图文取证(OCR/一致性) → 证据检索 → 证据图 → 控辩裁多模型裁决 + 置信度路由</div>
+  <form id="form">
+    <textarea name="text" placeholder="粘贴待核查的帖子文本…" required></textarea>
+    <div class="row">
+      <input type="file" name="image" accept="image/*">
+      <button id="submit" type="submit">开始核查</button>
+    </div>
+  </form>
+  <img id="preview" class="img-preview" alt="图像预览">
+  <div class="timeline" id="timeline"></div>
+  <div class="result" id="result"></div>
+</div>
+<script src="/vendor/cytoscape.min.js"></script>
+<script>
+const STAGES = [
+  ["decompose", "断言拆解"],
+  ["forensics", "多模态取证"],
+  ["retrieve", "证据检索"],
+  ["graph", "证据图构建"],
+  ["adjudicate", "多模型裁决"],
+];
+const form = document.getElementById("form");
+const timeline = document.getElementById("timeline");
+const resultBox = document.getElementById("result");
+const submitBtn = document.getElementById("submit");
+
+const CONSISTENCY_LABELS = { consistent: "图文一致", inconsistent: "图文矛盾", uncertain: "无法判断" };
+
+function renderForensics(fr) {
+  const box = document.createElement("div");
+  box.className = "forensics";
+  const h = document.createElement("h3");
+  h.textContent = "多模态取证";
+  const badge = document.createElement("span");
+  badge.className = `badge ${fr.overall || "uncertain"}`;
+  badge.textContent = CONSISTENCY_LABELS[fr.overall] || fr.overall || "无法判断";
+  h.append(badge);
+  box.append(h);
+  const addField = (label, value) => {
+    if (!value) return;
+    const d = document.createElement("div");
+    d.className = "field";
+    const b = document.createElement("b");
+    b.textContent = `${label}：`;
+    d.append(b, document.createTextNode(value));
+    box.append(d);
+  };
+  addField("OCR 文字", fr.ocr_text);
+  addField("图像描述", fr.description);
+  addField("取证备注", fr.notes);
+  for (const c of fr.consistency || []) {
+    const line = document.createElement("div");
+    line.className = "claimline";
+    const cb = document.createElement("span");
+    cb.className = `badge ${c.consistency || "uncertain"}`;
+    cb.textContent = CONSISTENCY_LABELS[c.consistency] || c.consistency;
+    line.append(document.createTextNode(`${c.claim_id} `), cb);
+    if (c.note) line.append(document.createTextNode(` ${c.note}`));
+    box.append(line);
+  }
+  return box;
+}
+
+const TIER_COLORS = { official: "#22c55e", mainstream: "#84cc16", social: "#f59e0b", unknown: "#64748b" };
+const REL_COLORS = { support: "#22c55e", contradict: "#ef4444", same_source: "#64748b" };
+
+function renderGraph(elements) {
+  if (!elements || !elements.nodes || !elements.nodes.length) return null;
+  const box = document.createElement("div");
+  box.className = "graphbox";
+  const h = document.createElement("h3");
+  h.textContent = "证据图（断言 ↔ 证据）";
+  const cy = document.createElement("div");
+  cy.id = "cy";
+  box.append(h, cy);
+  const legend = document.createElement("div");
+  legend.className = "legend";
+  const item = (color, label, line) => {
+    const s = document.createElement("span");
+    const sw = document.createElement("i");
+    sw.className = "swatch" + (line ? " line" : "");
+    sw.style.background = color;
+    s.append(sw, document.createTextNode(label));
+    return s;
+  };
+  legend.append(
+    item("#3b82f6", "断言"),
+    item("#f59e0b", "证据(来源分级)"),
+    item(REL_COLORS.support, "支持", true),
+    item(REL_COLORS.contradict, "矛盾", true),
+    item(REL_COLORS.same_source, "同源", true),
+  );
+  box.append(legend);
+  // 容器须先入 DOM 且有尺寸，Cytoscape 才能正确布局
+  requestAnimationFrame(() => {
+    cytoscape({
+      container: cy,
+      elements: { nodes: elements.nodes, edges: elements.edges },
+      style: [
+        { selector: "node", style: {
+          label: "data(label)", "text-wrap": "wrap", "text-max-width": "110px",
+          "font-size": "10px", color: "#c3c9d6", "text-valign": "bottom", "text-halign": "center",
+          "text-margin-y": 4, width: 34, height: 34, "border-width": 1, "border-color": "#2a3348",
+        } },
+        { selector: 'node[kind="claim"]', style: { shape: "ellipse", "background-color": "#3b82f6" } },
+        { selector: 'node[kind="evidence"]', style: { shape: "round-rectangle",
+          "background-color": (ele) => TIER_COLORS[ele.data("source_tier")] || TIER_COLORS.unknown } },
+        { selector: "edge", style: { width: 2, "curve-style": "bezier", "line-color": "#64748b" } },
+        { selector: 'edge[relation="support"]', style: { "line-color": REL_COLORS.support, width: 3 } },
+        { selector: 'edge[relation="contradict"]', style: { "line-color": REL_COLORS.contradict, width: 3 } },
+        { selector: 'edge[relation="same_source"]', style: { "line-color": REL_COLORS.same_source, "line-style": "dashed" } },
+      ],
+      layout: { name: "cose", animate: false, nodeRepulsion: 8000, idealEdgeLength: 80 },
+    });
+  });
+  return box;
+}
+
+function showResult(title, payload) {
+  resultBox.replaceChildren();
+  const v = document.createElement("div");
+  v.className = "verdict";
+  v.textContent = title;
+  resultBox.append(v);
+  if (payload && typeof payload === "object" && (payload.reason || payload.confidence != null)) {
+    const meta = document.createElement("div");
+    meta.className = "sub";
+    meta.style.margin = "6px 0 10px";
+    const conf = payload.confidence != null ? `置信度 ${Number(payload.confidence).toFixed(2)} · ` : "";
+    meta.textContent = conf + (payload.reason || "");
+    resultBox.append(meta);
+  }
+  if (payload && typeof payload === "object" && payload.escalated) {
+    const route = document.createElement("div");
+    route.className = "route";
+    route.textContent = `低置信度已升级强模型裁决：${payload.judge_model || ""}`;
+    resultBox.append(route);
+  }
+  if (payload && typeof payload === "object" && payload.forensics) {
+    resultBox.append(renderForensics(payload.forensics));
+  }
+  if (payload && typeof payload === "object" && payload.graph_elements) {
+    const gb = renderGraph(payload.graph_elements);
+    if (gb) resultBox.append(gb);
+  }
+  const pre = document.createElement("pre");
+  pre.textContent = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+  resultBox.append(pre);
+  resultBox.style.display = "block";
+  submitBtn.disabled = false;
+}
+
+const fileInput = form.querySelector("input[name=image]");
+const preview = document.getElementById("preview");
+fileInput.addEventListener("change", () => {
+  const file = fileInput.files[0];
+  if (file) {
+    preview.src = URL.createObjectURL(file);
+    preview.style.display = "block";
+  } else {
+    preview.style.display = "none";
+  }
+});
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  submitBtn.disabled = true;
+  resultBox.style.display = "none";
+  timeline.style.display = "block";
+  timeline.replaceChildren();
+  for (const [id, label] of STAGES) {
+    const row = document.createElement("div");
+    row.className = "stage";
+    row.id = `stage-${id}`;
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    const name = document.createElement("span");
+    name.textContent = label;
+    const detail = document.createElement("span");
+    detail.className = "detail";
+    row.append(dot, name, detail);
+    timeline.appendChild(row);
+  }
+  try {
+    const res = await fetch("/api/verify", { method: "POST", body: new FormData(form) });
+    if (!res.ok) throw new Error(await res.text());
+    const { task_id } = await res.json();
+    const es = new EventSource(`/api/verify/${task_id}/events`);
+    es.addEventListener("stage", (ev) => {
+      const d = JSON.parse(ev.data);
+      const el = document.getElementById(`stage-${d.stage}`);
+      el.classList.remove("running", "done");
+      el.classList.add(d.status);
+      if (d.detail) el.querySelector(".detail").textContent = JSON.stringify(d.detail);
+    });
+    es.addEventListener("result", (ev) => {
+      const d = JSON.parse(ev.data);
+      showResult(`结论：${d.verdict_label || d.verdict}`, d);
+      es.close();
+    });
+    es.addEventListener("fail", (ev) => {
+      showResult("任务失败", ev.data);
+      es.close();
+    });
+  } catch (err) {
+    showResult("请求失败", err.message);
+  }
+});
+</script>
+</body>
+</html>

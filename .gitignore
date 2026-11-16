@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.cache/
+.data/
+.pytest_cache/
+
+# 生成/下载产物，不纳入版本库（可由脚本复现）
+out/
+data/raw/
+data/real_images/

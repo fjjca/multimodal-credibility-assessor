@@ -1,0 +1,15 @@
+{"id": "s01", "text": "世界卫生组织建议成年人每周应进行至少150分钟的中等强度有氧运动。", "label": "supported", "image": null, "source": "seed-synthetic"}
+{"id": "s02", "text": "喝消毒水可以预防和治疗新冠肺炎。", "label": "refuted", "image": null, "source": "seed-synthetic"}
+{"id": "s03", "text": "网传某地本次洪水的淹没视频，实际为三年前另一场灾害的旧画面。", "label": "misleading", "image": null, "source": "seed-synthetic"}
+{"id": "s04", "text": "地球绕太阳公转一周约为365.25天，因此每四年设置一个闰年。", "label": "supported", "image": null, "source": "seed-synthetic"}
+{"id": "s05", "text": "微波炉加热食物会产生致癌物质，长期食用会致癌。", "label": "refuted", "image": null, "source": "seed-synthetic"}
+{"id": "s06", "text": "某明星出席活动的照片被配文称其出席另一场未参加的活动。", "label": "misleading", "image": null, "source": "seed-synthetic"}
+{"id": "s07", "text": "The Great Wall of China is visible from the Moon with the naked eye.", "label": "refuted", "image": null, "source": "seed-synthetic"}
+{"id": "s08", "text": "Water boils at a lower temperature at high altitude because atmospheric pressure is lower.", "label": "supported", "image": null, "source": "seed-synthetic"}
+{"id": "s09", "text": "A photo of a crowded beach in 2019 is shared as proof of current overcrowding at a different resort.", "label": "misleading", "image": null, "source": "seed-synthetic"}
+{"id": "s10", "text": "Vaccines cause autism in children.", "label": "refuted", "image": null, "source": "seed-synthetic"}
+{"id": "s11", "text": "Light travels faster than sound, which is why lightning is seen before thunder is heard.", "label": "supported", "image": null, "source": "seed-synthetic"}
+{"id": "s12", "text": "某产品广告截取用户好评的前半句，隐去后半句的批评，制造全面好评的假象。", "label": "misleading", "image": null, "source": "seed-synthetic"}
+{"id": "s13", "text": " humans only use 10 percent of their brains.", "label": "refuted", "image": null, "source": "seed-synthetic"}
+{"id": "s14", "text": "成年人的骨骼数量约为206块。", "label": "supported", "image": null, "source": "seed-synthetic"}
+{"id": "s15", "text": "一段某国阅兵视频被配上他国字幕，声称是他国最新军事展示。", "label": "misleading", "image": null, "source": "seed-synthetic"}

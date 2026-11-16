@@ -1,0 +1,11 @@
+.venv
+.cache
+.data
+out
+.git
+.env
+__pycache__
+*.pyc
+tests
+data/raw
+data/real_images
