@@ -4,6 +4,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
+from app import obs
 from app.config import Settings, get_settings
 from app.llm.cache import ResponseCache
 from app.llm.client import LLMClient, LLMResult
@@ -64,13 +65,23 @@ async def run_pipeline(
     trace_id = trace_id or uuid.uuid4().hex[:12]
     trace: list[dict] = []
     all_results: list[LLMResult] = []
+    stage_started: dict[str, float] = {}
 
     async def begin(stage_id: str, label: str) -> None:
+        stage_started[stage_id] = time.perf_counter()
         await emit("stage", {"stage": stage_id, "label": label, "status": "running"})
 
     async def done(stage_id: str, label: str, detail: dict, results: list[LLMResult]) -> None:
         all_results.extend(results)
-        trace.append({"stage": stage_id, "detail": detail, "usage": _usage(results)})
+        usage = _usage(results)
+        start = stage_started.pop(stage_id, None)
+        elapsed = time.perf_counter() - start if start is not None else 0.0
+        obs.record_stage(stage_id, elapsed)
+        obs.log.info(
+            "stage done",
+            extra={"trace_id": trace_id, "stage": stage_id, "latency_s": round(elapsed, 3), **usage},
+        )
+        trace.append({"stage": stage_id, "detail": detail, "usage": usage})
         await emit("stage", {"stage": stage_id, "label": label, "status": "done", "detail": detail})
 
     # 1. 断言拆解

@@ -11,6 +11,7 @@ from openai import (
     RateLimitError,
 )
 
+from app import obs
 from app.config import Settings
 from app.llm.cache import ResponseCache
 
@@ -72,6 +73,7 @@ class LLMClient:
         key = self.cache.key(provider, model, messages, params)
         hit = self.cache.get(key)
         if hit is not None:
+            obs.record_llm_call(role, hit["model"], cached=True)
             return LLMResult(
                 content=hit["content"], model=hit["model"], usage=hit.get("usage", {}), cached=True
             )
@@ -80,6 +82,10 @@ class LLMClient:
             content, usage = await self._call_with_retry(provider, model, messages, params)
         latency_ms = (time.perf_counter() - started) * 1000
         self.cache.put(key, content, usage, model)
+        obs.record_llm_call(
+            role, model, cached=False,
+            tokens=(usage or {}).get("total_tokens", 0), latency_ms=latency_ms,
+        )
         return LLMResult(content=content, model=model, usage=usage, latency_ms=latency_ms)
 
     async def _call_with_retry(self, provider, model, messages, params) -> tuple[str, dict]:
@@ -107,6 +113,15 @@ class LLMClient:
                                 pass
                 else:
                     delay = min(2**attempt, 30)
+                obs.log.warning(
+                    "llm retry",
+                    extra={
+                        "model": model,
+                        "attempt": attempt + 1,
+                        "error": type(last_exc).__name__,
+                        "delay_s": round(delay, 2),
+                    },
+                )
                 await asyncio.sleep(delay + random.uniform(0, 0.5))
         raise last_exc
 

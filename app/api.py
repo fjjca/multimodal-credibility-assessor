@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
+from app import obs
 from app.pipeline.runner import run_pipeline
 
 router = APIRouter(prefix="/api")
@@ -39,11 +40,30 @@ def _make_emit(task: Task):
 
 async def _run(task: Task) -> None:
     emit = _make_emit(task)
+    started = time.perf_counter()
     try:
         task.result = await run_pipeline(task.text, task.image_path, emit)
         task.status = "done"
+        elapsed = time.perf_counter() - started
+        obs.record_verify(
+            latency_s=elapsed,
+            verdict=task.result.get("verdict", "unknown"),
+            escalated=bool(task.result.get("escalated", False)),
+        )
+        obs.log.info(
+            "verify done",
+            extra={
+                "task_id": task.id,
+                "verdict": task.result.get("verdict"),
+                "confidence": task.result.get("confidence"),
+                "latency_s": round(elapsed, 3),
+                "total_tokens": (task.result.get("usage") or {}).get("total_tokens", 0),
+            },
+        )
     except Exception as exc:
         task.status = "error"
+        obs.VERIFY_ERRORS.inc()
+        obs.log.error("verify failed", extra={"task_id": task.id, "error": str(exc)}, exc_info=True)
         await emit("fail", {"message": str(exc)})
     finally:
         task.finished = True
@@ -64,6 +84,8 @@ async def verify(text: str = Form(...), image: UploadFile | None = File(None)):
         image_path = str(dest)
     task = Task(id=task_id, text=text, image_path=image_path)
     _tasks[task_id] = task
+    obs.record_verify_request(has_image=image_path is not None)
+    obs.log.info("verify accepted", extra={"task_id": task_id, "has_image": image_path is not None})
     asyncio.create_task(_run(task))
     return {"task_id": task_id}
 

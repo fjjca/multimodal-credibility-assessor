@@ -32,6 +32,7 @@
 - **全组件配置开关 = 免费消融实验**：`ENABLE_RETRIEVAL / ENABLE_DEBATE / ENABLE_ESCALATION` 一行开关即可做对照，无需改代码。
 - **OpenAI 兼容接口**：所有模型调用走统一 provider:model 配置，为私有化部署埋伏笔。
 - **评测与一键部署**：可复现的指标（准确率/弃权率/macro-F1/成本）+ `docker compose up` 一条命令起服务。
+- **轻量可观测性**：结构化 JSON 日志 + Prometheus `/metrics`，token/延迟/失败/升级四类信号零外部服务落地，token 只计实时调用与成本口径对齐。
 
 ## 快速开始
 
@@ -125,10 +126,36 @@ ENABLE_RETRIEVAL=false LLM_CACHE_MODE=off \
 
 > 口径说明：合成集是受控 demo，用于验证多模态链路与消融对照，非真实世界基准；真实多模态泛化仍待可下载基准（Fakeddit 真实图因智谱境内服务器拉取境外 URL 受限而不可用，故用 base64 合成图）。
 
+## 可观测性
+
+零外部服务、一个轻依赖（`prometheus-client`）、纯增量埋点：**结构化 JSON 日志（stdout）+ Prometheus `/metrics`**。不接 Langfuse / OTel 云（境内网络受限且重），先把"成本、延迟、失败、升级"四类信号落地。
+
+```bash
+curl http://localhost:8000/metrics      # Prometheus 文本 exposition，可直接被抓取
+```
+
+指标（`app/obs.py`，模块级注册，根 `/metrics` 暴露）：
+
+| 指标 | 类型 | 标签 | 含义 |
+|---|---|---|---|
+| `llm_calls_total` | Counter | role / model / cached | 调用次数，缓存命中单独计数 |
+| `llm_tokens_total` | Counter | role | **仅实时调用**消耗 token，缓存命中不重复计费 |
+| `llm_latency_seconds` | Histogram | role | 实时调用耗时（秒级桶 0.5–120s） |
+| `stage_latency_seconds` | Histogram | stage | 五阶段各自耗时 |
+| `verify_requests_total` | Counter | has_image | 收到的核查请求 |
+| `verify_latency_seconds` | Histogram | — | 整条流水线耗时 |
+| `verify_errors_total` | Counter | — | 失败次数 |
+| `verdicts_total` | Counter | verdict | 结论分布（supported/refuted/…） |
+| `escalations_total` | Counter | — | 低置信度升级强裁判次数 |
+
+结构化日志走应用 logger（`credibility`），经根 JSON handler 输出到 stdout，事件含 `verify accepted/done/failed`、`stage done`、`llm retry`，字段如 `task_id / verdict / confidence / latency_s / total_tokens / stage / attempt / error`。容器里即 `docker logs` 可采的 JSON 行。
+
+> 埋点分层：LLM / 阶段指标在客户端与 runner 内部（评测与 serving 共用）；`verify_*` / `verdicts` / `escalations` 只在 `api._run`，评测跑批不污染 serving 计数。token 只计实时调用，与"成本敏感"口径一致。
+
 ## 测试
 
 ```bash
-.venv/Scripts/python -m pytest        # 80 项，覆盖客户端/缓存/各流水线阶段/取证/路由/评测/API
+.venv/Scripts/python -m pytest        # 91 项，覆盖客户端/缓存/各流水线阶段/取证/路由/评测/API/可观测性
 ```
 
 ## 项目结构
@@ -136,7 +163,8 @@ ENABLE_RETRIEVAL=false LLM_CACHE_MODE=off \
 ```
 app/
   config.py            # pydantic-settings 配置（角色模型、开关、缓存）
-  api.py / main.py     # FastAPI 路由 + SSE + 静态托管
+  api.py / main.py     # FastAPI 路由 + SSE + 静态托管 + 根 /metrics
+  obs.py               # 结构化 JSON 日志 + Prometheus 指标埋点
   llm/                 # OpenAI 兼容客户端、退避重试、录制回放缓存
   pipeline/            # decompose / forensics / retrieve / evidence_graph / graph / adjudicate / runner / models
   eval/                # 数据集、harness（断点续跑）、指标、基线/流水线 predictor
@@ -151,4 +179,4 @@ data/                  # 评测数据集与合成图像
 
 - **成本**：默认全免费三模型分工，预算 ≈ ¥0；升级付费裁判单条约 ¥0.003–0.005。免费档有账户级并发限制，客户端带并发上限 + 指数退避；评测支持断点续跑。
 - **限制**：多模态评测基于小规模合成用例；单图输入；检索依赖 Tavily 免费档质量；裁决质量受免费模型能力约束。
-- **v2 路线**：反向搜图 / 图片挪用检测、视频与多图、Neo4j + 可信度传播 / 多跳推理、多轮辩论、Redis/Celery、Langfuse、本地 vLLM、React 前端。
+- **v2 路线**：反向搜图 / 图片挪用检测、视频与多图、Neo4j + 可信度传播 / 多跳推理、多轮辩论、Redis/Celery、OTel/Langfuse 分布式追踪（在现有 Prometheus+JSON 之上）、本地 vLLM、React 前端。
