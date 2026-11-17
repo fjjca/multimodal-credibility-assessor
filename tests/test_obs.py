@@ -3,7 +3,7 @@ import logging
 
 import httpx
 import pytest
-from prometheus_client import generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST
 
 from app import obs
 from app.config import Settings
@@ -192,5 +192,7 @@ async def test_runner_records_stage_metrics_not_serving(tmp_path, monkeypatch):
 def test_metrics_payload_matches_exposition():
     body, content_type = obs.metrics_payload()
     assert isinstance(body, bytes)
-    assert content_type.startswith("text/plain")
-    assert body == generate_latest()
+    assert content_type == CONTENT_TYPE_LATEST
+    # 不断言两次 generate_latest() 字节相等：Linux 上 process 采集器的值会随时间漂移
+    assert b"# HELP llm_calls_total" in body
+    assert b"# TYPE verdicts_total counter" in body
