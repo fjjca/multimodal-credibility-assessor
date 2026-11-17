@@ -1,5 +1,7 @@
 # 多模态内容可信度核查系统
 
+[![CI](https://github.com/fjjca/multimodal-credibility-assessor/actions/workflows/ci.yml/badge.svg)](https://github.com/fjjca/multimodal-credibility-assessor/actions/workflows/ci.yml)
+
 图文帖子 → 原子断言拆解 → VLM 图文取证 → 证据检索 → 证据图 → 控辩裁多模型裁决 → **结论 + 证据链 + 可视化证据图**。
 
 面向大模型应用 / FDE 岗位的全栈 demo：FastAPI + SSE 流式进度、OpenAI 兼容多模型分工、NetworkX 证据图接地裁决、置信度阈值路由、可复现评测与消融、Docker 一键部署。默认模型全走免费档，零充值可跑通。
