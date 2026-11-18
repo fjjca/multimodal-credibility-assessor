@@ -48,6 +48,46 @@ def _usage(results: list[LLMResult]) -> dict:
     }
 
 
+def _build_result(
+    *, claims, evidences, img_ev, verdict, stats, g, forensics_detail,
+    all_results, trace, trace_id, settings,
+) -> dict:
+    """组装结果 dict 并落盘 trace/证据图。linear 与 LangGraph 两条编排共用，保证输出契约一致。"""
+    by_id = {e.id: e for e in evidences}
+    if img_ev is not None:
+        by_id[img_ev.id] = img_ev
+    chain = [
+        {"id": i, "title": by_id[i].title, "url": by_id[i].url, "source_tier": by_id[i].source_tier}
+        for i in verdict["evidence_chain"] if i in by_id
+    ]
+    result = {
+        "verdict": verdict["verdict"],
+        "verdict_label": VERDICT_LABELS.get(verdict["verdict"], verdict["verdict"]),
+        "confidence": verdict["confidence"],
+        "reason": verdict["reason"],
+        "claims": [{"id": c.id, "text": c.text} for c in claims],
+        "evidence_chain": chain,
+        "graph": stats,
+        "graph_elements": graph_elements(g),
+        "graph_summary": claim_evidence_summary(g),
+        "forensics": forensics_detail,
+        "prosecutor": verdict["prosecutor"],
+        "defender": verdict["defender"],
+        "escalated": verdict.get("escalated", False),
+        "judge_model": verdict.get("judge_model", ""),
+        "usage": _usage(all_results),
+        "trace_id": trace_id,
+    }
+    trace_dir = Path(settings.trace_dir)
+    trace_dir.mkdir(parents=True, exist_ok=True)
+    save_graph(g, trace_dir / f"{trace_id}_graph.json")
+    (trace_dir / f"{trace_id}.jsonl").write_text(
+        "\n".join(json.dumps(t, ensure_ascii=False) for t in trace),
+        encoding="utf-8",
+    )
+    return result
+
+
 async def run_pipeline(
     text: str,
     image_path: str | None,
@@ -63,6 +103,13 @@ async def run_pipeline(
     if retriever is None:
         retriever = _default_retriever(settings)
     trace_id = trace_id or uuid.uuid4().hex[:12]
+    if settings.enable_langgraph:
+        from app.pipeline.graph_runner import run_graph_pipeline
+
+        return await run_graph_pipeline(
+            text, image_path, emit, settings=settings, client=client,
+            retriever=retriever, trace_id=trace_id,
+        )
     trace: list[dict] = []
     all_results: list[LLMResult] = []
     stage_started: dict[str, float] = {}
@@ -156,39 +203,10 @@ async def run_pipeline(
         adj_results,
     )
 
-    by_id = {e.id: e for e in evidences}
-    if img_ev is not None:
-        by_id[img_ev.id] = img_ev
-    chain = [
-        {"id": i, "title": by_id[i].title, "url": by_id[i].url, "source_tier": by_id[i].source_tier}
-        for i in verdict["evidence_chain"] if i in by_id
-    ]
-    result = {
-        "verdict": verdict["verdict"],
-        "verdict_label": VERDICT_LABELS.get(verdict["verdict"], verdict["verdict"]),
-        "confidence": verdict["confidence"],
-        "reason": verdict["reason"],
-        "claims": [{"id": c.id, "text": c.text} for c in claims],
-        "evidence_chain": chain,
-        "graph": stats,
-        "graph_elements": graph_elements(g),
-        "graph_summary": claim_evidence_summary(g),
-        "forensics": forensics_detail,
-        "prosecutor": verdict["prosecutor"],
-        "defender": verdict["defender"],
-        "escalated": verdict.get("escalated", False),
-        "judge_model": verdict.get("judge_model", ""),
-        "usage": _usage(all_results),
-        "trace_id": trace_id,
-    }
-
-    trace_dir = Path(settings.trace_dir)
-    trace_dir.mkdir(parents=True, exist_ok=True)
-    save_graph(g, trace_dir / f"{trace_id}_graph.json")
-    (trace_dir / f"{trace_id}.jsonl").write_text(
-        "\n".join(json.dumps(t, ensure_ascii=False) for t in trace),
-        encoding="utf-8",
+    result = _build_result(
+        claims=claims, evidences=evidences, img_ev=img_ev, verdict=verdict, stats=stats,
+        g=g, forensics_detail=forensics_detail, all_results=all_results, trace=trace,
+        trace_id=trace_id, settings=settings,
     )
-
     await emit("result", result)
     return result

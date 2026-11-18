@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import json
 
+from app import obs
 from app.config import get_settings
 from app.eval.baseline import BaselinePredictor
 from app.eval.dataset import load_jsonl
@@ -33,6 +34,7 @@ def build_predictor(system: str, client: LLMClient):
 
 
 async def main() -> None:
+    obs.setup_logging()
     parser = argparse.ArgumentParser(description="事实核查评测")
     parser.add_argument("--data", default="data/eval_seed.jsonl")
     parser.add_argument("--system", default="baseline")

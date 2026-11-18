@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     enable_retrieval: bool = True
     enable_debate: bool = True
     enable_escalation: bool = True
+    enable_langgraph: bool = False
+    debate_max_rounds: int = 1
     judge_confidence_threshold: float = 0.6
     trace_dir: str = ".data/traces"
 

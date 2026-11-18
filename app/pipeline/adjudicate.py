@@ -99,64 +99,69 @@ async def _argue(
     return _parse_argument(result.content), result
 
 
+def debate_base(claims: list[Claim], g: nx.Graph) -> str:
+    claims_text = "\n".join(f"{c.id}: {c.text}" for c in claims) or "（无断言）"
+    return f"断言：\n{claims_text}\n\n证据图：\n{_graph_context(g)}"
+
+
+async def judge_once(
+    client: LLMClient, base: str, pros_arg: str, def_arg: str, model_override: str | None = None
+) -> tuple[dict, LLMResult]:
+    judge_input = f"{base}\n\n控方论证：{pros_arg}\n\n辩方论证：{def_arg}"
+    messages = [
+        {"role": "system", "content": JUDGE_SYSTEM},
+        {"role": "user", "content": judge_input},
+    ]
+    try:
+        r = await client.chat(
+            "judge", messages, temperature=0.0, max_tokens=512,
+            extra_body={"thinking": {"type": "disabled"}}, model_override=model_override,
+        )
+    except BadRequestError:
+        r = LLMResult(
+            content='{"verdict":"unverifiable","confidence":null,"reason":"内容审核拒答，无法裁决"}',
+            model="",
+        )
+    verdict = parse_judge_output(r.content)
+    verdict["escalated"] = False
+    verdict["judge_model"] = r.model
+    return verdict, r
+
+
+def needs_escalation(settings, verdict: dict, judge_model: str) -> bool:
+    strong_model = settings.model_judge_strong.partition(":")[2]
+    _, current_model = settings.role_model("judge")
+    conf = verdict["confidence"]
+    return bool(
+        settings.enable_escalation
+        and judge_model  # 内容审核降级(model="")不升级：强模型对同一内容同样拒答
+        and strong_model != current_model
+        and (conf is None or conf < settings.judge_confidence_threshold)
+    )
+
+
 async def adjudicate(
     client: LLMClient,
     claims: list[Claim],
     g: nx.Graph,
     enable_debate: bool = True,
 ) -> tuple[dict, list[LLMResult]]:
-    claims_text = "\n".join(f"{c.id}: {c.text}" for c in claims) or "（无断言）"
-    base = f"断言：\n{claims_text}\n\n证据图：\n{_graph_context(g)}"
+    base = debate_base(claims, g)
     results: list[LLMResult] = []
     pros_arg = def_arg = "（未进行辩论）"
     if enable_debate:
         pros_arg, r1 = await _argue(client, "prosecutor", PROSECUTOR_SYSTEM, base)
         def_arg, r2 = await _argue(client, "defender", DEFENDER_SYSTEM, base)
         results.extend([r1, r2])
-    judge_input = f"{base}\n\n控方论证：{pros_arg}\n\n辩方论证：{def_arg}"
-    judge_messages = [
-        {"role": "system", "content": JUDGE_SYSTEM},
-        {"role": "user", "content": judge_input},
-    ]
-
-    async def _judge(model_override: str | None = None) -> LLMResult:
-        try:
-            return await client.chat(
-                "judge",
-                judge_messages,
-                temperature=0.0,
-                max_tokens=512,
-                extra_body={"thinking": {"type": "disabled"}},
-                model_override=model_override,
-            )
-        except BadRequestError:
-            return LLMResult(
-                content='{"verdict":"unverifiable","confidence":null,"reason":"内容审核拒答，无法裁决"}',
-                model="",
-            )
-
-    r3 = await _judge()
+    verdict, r3 = await judge_once(client, base, pros_arg, def_arg)
     results.append(r3)
-    verdict = parse_judge_output(r3.content)
-    verdict["escalated"] = False
-    verdict["judge_model"] = r3.model
-
     settings = client.settings
-    strong_model = settings.model_judge_strong.partition(":")[2]
-    _, current_model = settings.role_model("judge")
-    conf = verdict["confidence"]
-    if (
-        settings.enable_escalation
-        and r3.model  # 内容审核降级(model="")不升级：强模型对同一内容同样拒答
-        and strong_model != current_model
-        and (conf is None or conf < settings.judge_confidence_threshold)
-    ):
-        r4 = await _judge(model_override=settings.model_judge_strong)
+    if needs_escalation(settings, verdict, r3.model):
+        strong = settings.model_judge_strong
+        verdict, r4 = await judge_once(client, base, pros_arg, def_arg, model_override=strong)
         results.append(r4)
-        verdict = parse_judge_output(r4.content)
         verdict["escalated"] = True
-        verdict["judge_model"] = r4.model or strong_model
-
+        verdict["judge_model"] = r4.model or strong.partition(":")[2]
     verdict["prosecutor"] = pros_arg
     verdict["defender"] = def_arg
     return verdict, results
