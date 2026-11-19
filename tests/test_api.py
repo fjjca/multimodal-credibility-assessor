@@ -78,3 +78,55 @@ async def test_empty_text_rejected(client):
 async def test_unknown_task_404(client):
     res = await client.get("/api/verify/nonexistent/events")
     assert res.status_code == 404
+
+
+async def test_list_evals(client, tmp_path, monkeypatch):
+    run_dir = tmp_path / "abl_text_linear"
+    run_dir.mkdir()
+    summary = {
+        "system": "pipeline", "dataset": "data/eval_seed.jsonl", "timestamp": 123.0,
+        "n_failed": 0, "metrics": {"n": 6, "accuracy": 0.5, "ece": 0.32},
+    }
+    (run_dir / "eval_pipeline_20261118_180034.json").write_text(
+        json.dumps(summary), encoding="utf-8"
+    )
+    monkeypatch.setattr("app.api.EVAL_DIR", tmp_path)
+    res = await client.get("/api/evals")
+    assert res.status_code == 200
+    items = res.json()["evals"]
+    assert len(items) == 1
+    assert items[0]["dir"] == "abl_text_linear"
+    assert items[0]["metrics"]["accuracy"] == 0.5
+
+
+async def test_list_evals_empty(client, tmp_path, monkeypatch):
+    monkeypatch.setattr("app.api.EVAL_DIR", tmp_path / "nope")
+    res = await client.get("/api/evals")
+    assert res.status_code == 200
+    assert res.json()["evals"] == []
+
+
+async def test_calibration_endpoint(client, tmp_path, monkeypatch):
+    from app.config import Settings
+
+    (tmp_path / "calibrator.json").write_text('{"temperature": 5.6}', encoding="utf-8")
+    (tmp_path / "reliability.json").write_text(
+        json.dumps({"temperature": 5.6, "n_attempted": 5, "reliability_raw": []}), encoding="utf-8"
+    )
+    settings = Settings(_env_file=None, calibrator_path=str(tmp_path / "calibrator.json"))
+    monkeypatch.setattr("app.api.get_settings", lambda: settings)
+    res = await client.get("/api/calibration")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["calibrator"]["temperature"] == 5.6
+    assert body["reliability"]["n_attempted"] == 5
+
+
+async def test_calibration_missing(client, tmp_path, monkeypatch):
+    from app.config import Settings
+
+    settings = Settings(_env_file=None, calibrator_path=str(tmp_path / "absent.json"))
+    monkeypatch.setattr("app.api.get_settings", lambda: settings)
+    res = await client.get("/api/calibration")
+    assert res.status_code == 200
+    assert res.json() == {"calibrator": None, "reliability": None}

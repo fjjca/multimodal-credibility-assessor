@@ -6,6 +6,7 @@ from pathlib import Path
 
 from app import obs
 from app.config import Settings, get_settings
+from app.eval.calibration import apply_temperature, load_temperature
 from app.llm.cache import ResponseCache
 from app.llm.client import LLMClient, LLMResult
 from app.pipeline.adjudicate import adjudicate
@@ -60,10 +61,16 @@ def _build_result(
         {"id": i, "title": by_id[i].title, "url": by_id[i].url, "source_tier": by_id[i].source_tier}
         for i in verdict["evidence_chain"] if i in by_id
     ]
+    # 事后校准：仅变换上报置信度，编排路由/升级仍用原始 conf（两条 runner 共用此函数→parity 不变）
+    conf_raw = verdict["confidence"]
+    conf = conf_raw
+    if settings.enable_calibration and conf_raw is not None:
+        conf = apply_temperature(conf_raw, load_temperature(settings.calibrator_path))
     result = {
         "verdict": verdict["verdict"],
         "verdict_label": VERDICT_LABELS.get(verdict["verdict"], verdict["verdict"]),
-        "confidence": verdict["confidence"],
+        "confidence": conf,
+        "confidence_raw": conf_raw,
         "reason": verdict["reason"],
         "claims": [{"id": c.id, "text": c.text} for c in claims],
         "evidence_chain": chain,

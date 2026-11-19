@@ -9,10 +9,12 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app import obs
+from app.config import get_settings
 from app.pipeline.runner import run_pipeline
 
 router = APIRouter(prefix="/api")
 UPLOAD_DIR = Path(".data/uploads")
+EVAL_DIR = Path("out")
 
 
 @dataclass
@@ -123,3 +125,46 @@ async def task_events(task_id: str):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.get("/evals")
+async def list_evals():
+    """扫描 out/ 下的评测汇总（只读本地 artifact，不接受用户路径，避免遍历）。供 dashboard 对比消融。"""
+    items = []
+    if EVAL_DIR.exists():
+        for path in sorted(EVAL_DIR.glob("**/eval_*.json")):
+            try:
+                summary = json.loads(path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                continue
+            items.append(
+                {
+                    "dir": path.parent.name,
+                    "file": path.name,
+                    "system": summary.get("system"),
+                    "dataset": summary.get("dataset"),
+                    "timestamp": summary.get("timestamp"),
+                    "n_failed": summary.get("n_failed", 0),
+                    "metrics": summary.get("metrics", {}),
+                }
+            )
+    items.sort(key=lambda x: x.get("timestamp") or 0, reverse=True)
+    return {"evals": items}
+
+
+@router.get("/calibration")
+async def get_calibration():
+    """返回校准器元数据与可靠性分箱（scripts.calibrate 落盘的 artifact）。缺失时各项为 null。"""
+    settings = get_settings()
+    cal_path = Path(settings.calibrator_path)
+    rel_path = cal_path.parent / "reliability.json"
+
+    def _read(p: Path):
+        if not p.exists():
+            return None
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return None
+
+    return {"calibrator": _read(cal_path), "reliability": _read(rel_path)}

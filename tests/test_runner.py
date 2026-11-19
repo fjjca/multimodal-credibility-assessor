@@ -1,6 +1,9 @@
 import json
 
+import pytest
+
 from app.config import Settings
+from app.eval.calibration import apply_temperature
 from app.llm.client import LLMClient, LLMResult
 from app.pipeline.models import Evidence
 from app.pipeline.retrieve import FakeRetriever
@@ -161,3 +164,59 @@ async def test_runner_with_image_forensics(tmp_path, monkeypatch):
     assert result["evidence_chain"][0]["id"] == "img1"
     statuses = {d["stage"]: d["status"] for n, d in events if n == "stage" and d["status"] != "running"}
     assert statuses["forensics"] == "done"
+
+
+async def test_runner_calibration_off_keeps_raw(tmp_path, monkeypatch):
+    calls = []
+    settings, client = _mock_client(tmp_path, monkeypatch, calls)
+
+    async def emit(event, data):
+        pass
+
+    result = await run_pipeline(
+        "帖子", None, emit, settings=settings, client=client, retriever=_retriever(), trace_id="tcal0"
+    )
+    assert result["confidence"] == 0.9
+    assert result["confidence_raw"] == 0.9
+
+
+async def test_runner_calibration_posthoc_and_parity(tmp_path, monkeypatch):
+    calls = []
+    settings, client = _mock_client(tmp_path, monkeypatch, calls)
+    cal_path = tmp_path / "calibrator.json"
+    cal_path.write_text(json.dumps({"temperature": 3.0}), encoding="utf-8")
+    settings.enable_calibration = True
+    settings.calibrator_path = str(cal_path)
+
+    async def emit(event, data):
+        pass
+
+    linear = await run_pipeline(
+        "帖子", None, emit, settings=settings, client=client, retriever=_retriever(), trace_id="tcal1"
+    )
+    assert linear["confidence_raw"] == 0.9
+    assert linear["confidence"] == pytest.approx(apply_temperature(0.9, 3.0))
+    assert linear["confidence"] < 0.9
+
+    # LangGraph runner 共用 _build_result，校准后置信度逐字节一致（parity 不被破坏）
+    settings.enable_langgraph = True
+    graph = await run_pipeline(
+        "帖子", None, emit, settings=settings, client=client, retriever=_retriever(), trace_id="tcal2"
+    )
+    assert graph["confidence"] == linear["confidence"]
+    assert graph["confidence_raw"] == linear["confidence_raw"]
+
+
+async def test_runner_calibration_missing_artifact_is_noop(tmp_path, monkeypatch):
+    calls = []
+    settings, client = _mock_client(tmp_path, monkeypatch, calls)
+    settings.enable_calibration = True
+    settings.calibrator_path = str(tmp_path / "does_not_exist.json")
+
+    async def emit(event, data):
+        pass
+
+    result = await run_pipeline(
+        "帖子", None, emit, settings=settings, client=client, retriever=_retriever(), trace_id="tcal3"
+    )
+    assert result["confidence"] == 0.9  # 缺 artifact → T=1.0 不校准，流水线不中断

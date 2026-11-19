@@ -5,6 +5,7 @@ import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
+from app.eval.calibration import brier, ece_mce
 from app.eval.schema import ABSTAIN, VERDICTS, Prediction, Sample
 
 Predictor = Callable[[Sample], Awaitable[Prediction]]
@@ -34,6 +35,14 @@ def compute_metrics(records: list[dict]) -> dict:
     total_tokens = sum(
         (r.get("usage") or {}).get("total_tokens", 0) for r in records
     )
+    cal_pairs = [
+        (float(r["confidence"]), 1 if r["verdict"] == r["gold"] else 0)
+        for r in attempted
+        if r.get("confidence") is not None
+    ]
+    cal_conf = [p for p, _ in cal_pairs]
+    cal_y = [y for _, y in cal_pairs]
+    ece, mce = ece_mce(cal_conf, cal_y)
     return {
         "n": n,
         "accuracy": correct_all / n,
@@ -44,6 +53,10 @@ def compute_metrics(records: list[dict]) -> dict:
         "total_tokens": total_tokens,
         "mean_latency_ms": sum(r.get("latency_ms", 0) for r in records) / n,
         "cached_ratio": sum(bool(r.get("cached")) for r in records) / n,
+        "n_calibrated": len(cal_pairs),
+        "ece": ece,
+        "mce": mce,
+        "brier": brier(cal_conf, cal_y),
     }
 
 
@@ -153,6 +166,8 @@ def _render_md(summary: dict) -> str:
         f"- 总 tokens: {m['total_tokens']}",
         f"- 平均延迟(ms): {m['mean_latency_ms']:.0f}",
         f"- 缓存命中比例: {m['cached_ratio']:.3f}",
+        f"- ECE(校准误差, attempted): {m.get('ece', 0.0):.3f}",
+        f"- Brier(attempted): {m.get('brier', 0.0):.3f}",
         "",
         "| 类别 | precision | recall | f1 |",
         "|---|---|---|---|",

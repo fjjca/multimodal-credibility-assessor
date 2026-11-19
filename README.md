@@ -34,6 +34,7 @@
 - **评测与一键部署**：可复现的指标（准确率/弃权率/macro-F1/成本）+ `docker compose up` 一条命令起服务。
 - **轻量可观测性**：结构化 JSON 日志 + Prometheus `/metrics`，token/延迟/失败/升级四类信号零外部服务落地，token 只计实时调用与成本口径对齐。
 - **LangGraph 可选编排 + 循环辩论**：`ENABLE_LANGGRAPH` 一行切换 StateGraph 与手写直线 runner，单轮逐字节等价（parity 测试），多轮控辩裁成环收敛——把"循环条件路由 + 状态归约"做成可 A/B、可回退的一等结构，而非为用框架而重写。
+- **事后置信度校准 + 评测 Dashboard**：温度缩放（纯 Python，无 numpy/scipy）软化免费裁判的过度自信，报 ECE/MCE/Brier 与 **LOO-CV** 诚实小样本指标；`/dashboard.html` 纯 SVG（无 CDN）渲染可靠性曲线、置信度分布与消融对比。校准只变换上报置信度，编排路由仍用原始 conf，parity 不被破坏。
 
 ## 快速开始
 
@@ -72,6 +73,7 @@ cp .env.example .env                             # 填入 key
 
 - `ENABLE_RETRIEVAL` / `ENABLE_DEBATE` / `ENABLE_ESCALATION`：组件消融开关。
 - `ENABLE_LANGGRAPH`（默认 false）/ `DEBATE_MAX_ROUNDS`（默认 1）：编排开关与辩论轮数，详见[编排小节](#编排langgraphflag-门控可选)。
+- `ENABLE_CALIBRATION`（默认 false）/ `CALIBRATOR_PATH`（默认 `.data/calibrator.json`）：事后置信度校准开关与 artifact 路径，详见[校准小节](#置信度校准与评测-dashboard)。
 - `JUDGE_CONFIDENCE_THRESHOLD`（默认 0.6）：低于此值升级强裁判。
 - `LLM_CACHE_MODE`：`off` / `readwrite`（默认） / `replay`（无 key 时回放已录制响应）。
 - 换模型 / 升级付费裁判：只改 `MODEL_*` 一行，不改代码。
@@ -212,14 +214,50 @@ ENABLE_LANGGRAPH=true DEBATE_MAX_ROUNDS=3 LLM_CACHE_MODE=off ENABLE_RETRIEVAL=tr
 
 - **live parity 成立**：graph_r1 与 linear 本次 6/6 结论逐条一致、聚合指标完全相同（acc / 弃权 / macro-F1），在离线 mock parity 之外再用真实模型佐证编排等价。
 - **循环未触发**：r3 全部 `rounds=1`、裁决 `n_calls=3`——免费裁判 `glm-4.7-flash` 过度自信（置信度 0.85–1.0，连判错也 0.95），从不跌破 0.6 阈值，故控辩裁循环与置信度升级都不激活。r3 与 r1 的结论差异（s03/s04/s05）是 cache off + temperature>0 的**调用抖动**，非多轮效果；准确率下降源于 s01 限流失败 + 抖动。
-- **真正瓶颈是校准，不是编排**：循环机制本身正确（离线 mock 低置信测试已证收敛 / 硬上限 / 升级），但其置信度触发器在过度自信的免费裁判下很少激活。多轮辩论的准确率增益需在裁判会表达不确定的数据 / 模型上才显现——这是下一步（置信度校准 / 更强裁判）要解决的，而非编排层。
+- **真正瓶颈是校准，不是编排**：循环机制本身正确（离线 mock 低置信测试已证收敛 / 硬上限 / 升级），但其置信度触发器在过度自信的免费裁判下很少激活。多轮辩论的准确率增益需在裁判会表达不确定的数据 / 模型上才显现——置信度校准已在[校准小节](#置信度校准与评测-dashboard)落地（温度缩放 + LOO-CV），更强裁判仍待验证。
 
 > 成本：多轮 = 控/辩/裁各多调用 N−1 次，token 随轮数近似线性增长；本次因裁判过度自信未触发，r3 与 r1 同成本。`DEBATE_MAX_ROUNDS=1` 与直线 runner 同成本，是"零代价拿到 LangGraph 编排能力"的默认档。检查点续跑（M2）/ HITL 人工介入（M3）尚未引入，见 v2 路线。
+
+## 置信度校准与评测 Dashboard
+
+免费裁判（glm-4.7-flash）**系统性过度自信**：A/B 中判对样本平均 conf≈0.93、判错也≈0.90，判别力弱，导致低置信循环/升级触发器几乎不激活。编排不是瓶颈，**校准才是**。D1 用事后温度缩放直接处理上报置信度。
+
+**方法（`app/eval/calibration.py`，纯 Python，无 numpy/scipy/sklearn）**
+
+- 把裁判的单标量 confidence 视为二分类 `P(correct)`，温度缩放 `p_cal = sigmoid(logit(p_raw)/T)`；`T>1` 软化过度自信。
+- 网格搜索 `T` 最小化 NLL；仅在 **attempted（非弃权）且 confidence 非空** 的样本上拟合与评估。
+- 指标 **ECE / MCE / Brier** + 10 箱可靠性分箱；另报 **LOO-CV**（留一拟合再校准）给出诚实的小样本 out-of-fold 估计，避免"同批数据既拟合又评估"的乐观偏差。
+- **事后、不重跑推理**：`scripts.calibrate` 直接读已采集的 eval `.jsonl` 拟合，省额度。
+
+```bash
+# 1) 采集原始置信度（校准 off，文本避开 VLM 冷却；cache readwrite 复用已录响应）
+ENABLE_CALIBRATION=false ENABLE_RETRIEVAL=true LLM_CACHE_MODE=readwrite \
+  .venv/Scripts/python -m scripts.evaluate --data data/eval_seed.jsonl --system pipeline --out out/calib_collect
+# 2) 拟合温度，落盘 .data/calibrator.json + .data/reliability.json
+.venv/Scripts/python -m scripts.calibrate --records "out/calib_collect/eval_pipeline_*.jsonl"
+# 3) 启用流水线校准（只变换上报置信度；路由/升级仍用原始 conf）
+ENABLE_CALIBRATION=true .venv/Scripts/python -m app
+```
+
+**接入语义（保 parity）**：校准在两条 runner 共用的 `runner._build_result` 里、adjudicate（升级已用原始 conf 决策）**之后**应用，结果同时带 `confidence`（校准后）与 `confidence_raw`（原始）。因此 `ENABLE_CALIBRATION` 开/关不改变编排路由与调用顺序，linear/graph parity 不受影响；artifact 缺失时 `T=1.0` 静默不校准，流水线不中断。
+
+**Dashboard（`/dashboard.html`，纯 SVG 无 CDN）**：`GET /api/evals` 扫描 `out/**/eval_*.json` 汇总、`GET /api/calibration` 读 artifact，前端渲染①校准摘要卡（T、ECE/Brier 原始→校准→LOO）②**可靠性曲线**（校准前/后 vs 对角线 y=x，点大小∝样本数）③置信度分布直方图（原始 vs 校准后）④消融对比表 + accuracy/macro-F1 条形图。只读本地 artifact，不接受用户路径输入。
+
+### 校准结果（诚实口径）
+
+| 数据集 | attempted | 拟合 T | ECE 原始→校准 | ECE LOO | Brier 原始→校准 | Brier LOO |
+|---|---|---|---|---|---|---|
+| 硬子集（A/B linear 6 条，判对率 0.6） | 5 | **5.62** | 0.320→0.188 | 0.410 | 0.329→0.212 | 0.280 |
+| 全 seed（calib_collect 12 完成/3 失败，判对率 0.9） | 10 | **0.85** | 0.095→0.092 | 0.087 | 0.084→0.085 | 0.081 |
+
+- **过度自信是子集/模型依赖的，不是全局常数**：硬子集（多 misleading 难例）裁判 conf≈0.9 但判对率仅 0.6 → 严重过度自信，T=5.6 大幅软化；全 seed 以易例为主、判对率 0.9≈平均 conf 0.88 → 已接近校准，T=0.85 反而轻微**抬升**（略欠自信）。
+- **LOO-CV 是小样本的诚实阀**：硬子集 n=5 时 in-sample ECE 减半但 LOO 反升（0.410），说明温度拟合方差大、改善不可信；全 seed n=10 时 LOO（0.087）优于原始（0.095），改善才站得住。Dashboard 对 n<20 显式告警。
+- **结论**：D1 的价值不是"免费涨点"，而是把"裁判到底可不可信"变成**可测量、可校正、可回退**的一等能力——ECE/Brier/LOO + 温度缩放 + 可靠性曲线，在过度自信时校正、在已校准时如实报告"无需校正"。这与"校准弃权比刷高准确率更重要"的取向一致。
 
 ## 测试
 
 ```bash
-.venv/Scripts/python -m pytest        # 102 项，覆盖客户端/缓存/各流水线阶段/取证/路由/评测/API/可观测性/LangGraph 编排与循环辩论
+.venv/Scripts/python -m pytest        # 122 项，覆盖客户端/缓存/各流水线阶段/取证/路由/评测/API/可观测性/LangGraph 编排与循环辩论/置信度校准
 ```
 
 ## 项目结构
@@ -231,9 +269,9 @@ app/
   obs.py               # 结构化 JSON 日志 + Prometheus 指标埋点
   llm/                 # OpenAI 兼容客户端、退避重试、录制回放缓存
   pipeline/            # decompose / forensics / retrieve / evidence_graph / graph / adjudicate / runner / graph_runner / models
-  eval/                # 数据集、harness（断点续跑）、指标、基线/流水线 predictor
-scripts/               # evaluate / make_demo_images / prepare_fakeddit / smoke_llm
-static/                # 单页前端 + vendored cytoscape.min.js
+  eval/                # 数据集、harness（断点续跑）、指标、基线/流水线 predictor、calibration（温度缩放/ECE/LOO）
+scripts/               # evaluate / calibrate / make_demo_images / prepare_fakeddit / smoke_llm
+static/                # 单页前端 + dashboard.html（纯 SVG）+ vendored cytoscape.min.js
 data/                  # 评测数据集与合成图像
 ```
 

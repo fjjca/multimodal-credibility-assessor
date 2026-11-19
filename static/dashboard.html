@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>评测 Dashboard · 校准与消融</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; background: #0f1420; color: #e6e9f0; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 32px 0 12px; }
+  .sub { color: #8b93a7; font-size: 13px; margin-bottom: 8px; }
+  a { color: #3b82f6; text-decoration: none; }
+  .cards { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+  .card { background: #171e2e; border: 1px solid #2a3348; border-radius: 8px; padding: 14px 16px; min-width: 150px; flex: 1; }
+  .card .k { color: #8b93a7; font-size: 12px; }
+  .card .v { font-size: 22px; font-weight: 600; margin-top: 4px; }
+  .card .d { font-size: 12px; margin-top: 4px; color: #8b93a7; }
+  .good { color: #22c55e; } .bad { color: #ef4444; } .warn { color: #f59e0b; }
+  .panel { background: #171e2e; border: 1px solid #2a3348; border-radius: 8px; padding: 16px; margin-top: 12px; }
+  svg { width: 100%; height: auto; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 10px; font-size: 12px; color: #8b93a7; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+  .swatch.box { height: 12px; width: 12px; border-radius: 3px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  th, td { text-align: right; padding: 7px 8px; border-bottom: 1px solid #1d2536; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: #8b93a7; font-weight: 600; }
+  td.name { color: #c3c9d6; }
+  .empty { color: #8b93a7; font-size: 13px; padding: 20px 0; }
+  .note { font-size: 12px; color: #f59e0b; margin-top: 10px; }
+  .axis { stroke: #2a3348; stroke-width: 1; }
+  .grid { stroke: #1d2536; stroke-width: 1; }
+  .tick { fill: #6b7488; font-size: 10px; }
+  .diag { stroke: #4b5568; stroke-width: 1; stroke-dasharray: 4 3; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>评测 Dashboard</h1>
+  <div class="sub">置信度校准（温度缩放 + LOO-CV）· 可靠性曲线 · 消融对比 · <a href="/">← 返回核查页</a></div>
+  <div id="cal-summary"></div>
+
+  <h2>可靠性曲线（校准前 / 后）</h2>
+  <div class="sub">横轴=平均置信度，纵轴=实际正确率；越贴近对角线越校准。点大小∝样本数。</div>
+  <div class="panel" id="reliability"></div>
+
+  <h2>置信度分布（原始 / 校准后）</h2>
+  <div class="panel" id="histogram"></div>
+
+  <h2>消融对比</h2>
+  <div class="sub">来自 out/ 下各次评测汇总（eval_*.json）。accuracy 分母含弃权，与 baseline 同口径。</div>
+  <div class="panel" id="ablation"></div>
+</div>
+<script>
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent) {
+  const n = document.createElementNS(NS, tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(n);
+  return n;
+}
+function txt(parent, x, y, s, attrs) {
+  const t = el("text", Object.assign({ x, y, class: "tick" }, attrs || {}), parent);
+  t.textContent = s;
+  return t;
+}
+const fmt = (v, d = 3) => (v == null ? "—" : Number(v).toFixed(d));
+
+function chartFrame(svg, W, H, pad) {
+  const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+  for (let i = 0; i <= 5; i++) {
+    const gx = pad.l + iw * i / 5, gy = pad.t + ih * i / 5;
+    el("line", { x1: gx, y1: pad.t, x2: gx, y2: pad.t + ih, class: "grid" }, svg);
+    el("line", { x1: pad.l, y1: gy, x2: pad.l + iw, y2: gy, class: "grid" }, svg);
+    txt(svg, gx, H - pad.b + 14, (i / 5).toFixed(1), { "text-anchor": "middle" });
+    txt(svg, pad.l - 6, gy + 3, (1 - i / 5).toFixed(1), { "text-anchor": "end" });
+  }
+  el("line", { x1: pad.l, y1: pad.t + ih, x2: pad.l + iw, y2: pad.t + ih, class: "axis" }, svg);
+  el("line", { x1: pad.l, y1: pad.t, x2: pad.l, y2: pad.t + ih, class: "axis" }, svg);
+  return { iw, ih, X: v => pad.l + iw * v, Y: v => pad.t + ih * (1 - v) };
+}
+
+function renderReliability(box, rel) {
+  box.replaceChildren();
+  if (!rel || !rel.reliability_raw) {
+    box.innerHTML = '<div class="empty">暂无校准 artifact。运行 <code>python -m scripts.calibrate --records out/.../eval_pipeline_*.jsonl</code> 生成。</div>';
+    return;
+  }
+  const W = 460, H = 360, pad = { l: 40, r: 16, t: 16, b: 30 };
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}` }, box);
+  const f = chartFrame(svg, W, H, pad);
+  el("line", { x1: f.X(0), y1: f.Y(0), x2: f.X(1), y2: f.Y(1), class: "diag" }, svg);
+  const series = [
+    { bins: rel.reliability_raw, color: "#f59e0b", name: "原始" },
+    { bins: rel.reliability_calibrated, color: "#22c55e", name: "校准后" },
+  ];
+  for (const s of series) {
+    const pts = s.bins.filter(b => b.count > 0);
+    if (pts.length > 1) {
+      el("polyline", {
+        points: pts.map(b => `${f.X(b.avg_conf)},${f.Y(b.accuracy)}`).join(" "),
+        fill: "none", stroke: s.color, "stroke-width": 2,
+      }, svg);
+    }
+    for (const b of pts) {
+      el("circle", {
+        cx: f.X(b.avg_conf), cy: f.Y(b.accuracy),
+        r: 3 + Math.sqrt(b.count) * 2.2, fill: s.color, "fill-opacity": 0.75,
+      }, svg);
+    }
+  }
+  txt(svg, W / 2, H - 2, "平均置信度", { "text-anchor": "middle", fill: "#8b93a7" });
+  const leg = document.createElement("div");
+  leg.className = "legend";
+  leg.innerHTML = series.map(s => `<span><i class="swatch" style="background:${s.color}"></i>${s.name}</span>`).join("")
+    + '<span><i class="swatch" style="background:#4b5568"></i>完美校准 y=x</span>';
+  box.appendChild(leg);
+}
+
+function renderHistogram(box, rel) {
+  box.replaceChildren();
+  const samples = (rel && rel.samples) || [];
+  if (!samples.length) {
+    box.innerHTML = '<div class="empty">暂无逐样本置信度数据。</div>';
+    return;
+  }
+  const nb = 10;
+  const raw = new Array(nb).fill(0), cal = new Array(nb).fill(0);
+  for (const s of samples) {
+    raw[Math.min(Math.floor(s.confidence * nb), nb - 1)]++;
+    cal[Math.min(Math.floor(s.calibrated * nb), nb - 1)]++;
+  }
+  const max = Math.max(1, ...raw, ...cal);
+  const W = 460, H = 260, pad = { l: 40, r: 16, t: 16, b: 30 };
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}` }, box);
+  const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+  for (let i = 0; i <= 4; i++) {
+    const gy = pad.t + ih * i / 4;
+    el("line", { x1: pad.l, y1: gy, x2: pad.l + iw, y2: gy, class: "grid" }, svg);
+    txt(svg, pad.l - 6, gy + 3, Math.round(max * (1 - i / 4)), { "text-anchor": "end" });
+  }
+  const bw = iw / nb;
+  for (let i = 0; i < nb; i++) {
+    const x0 = pad.l + i * bw;
+    const rh = ih * raw[i] / max, ch = ih * cal[i] / max;
+    el("rect", { x: x0 + bw * 0.12, y: pad.t + ih - rh, width: bw * 0.34, height: rh, fill: "#f59e0b", "fill-opacity": 0.8 }, svg);
+    el("rect", { x: x0 + bw * 0.52, y: pad.t + ih - ch, width: bw * 0.34, height: ch, fill: "#22c55e", "fill-opacity": 0.8 }, svg);
+    txt(svg, x0 + bw / 2, H - pad.b + 14, (i / nb).toFixed(1), { "text-anchor": "middle" });
+  }
+  el("line", { x1: pad.l, y1: pad.t + ih, x2: pad.l + iw, y2: pad.t + ih, class: "axis" }, svg);
+  txt(svg, W / 2, H - 2, "置信度区间", { "text-anchor": "middle", fill: "#8b93a7" });
+  const leg = document.createElement("div");
+  leg.className = "legend";
+  leg.innerHTML = '<span><i class="swatch box" style="background:#f59e0b"></i>原始</span>'
+    + '<span><i class="swatch box" style="background:#22c55e"></i>校准后</span>';
+  box.appendChild(leg);
+}
+
+function renderSummary(box, rel, meta) {
+  box.replaceChildren();
+  if (!rel) {
+    box.innerHTML = '<div class="empty">暂无校准结果。先采集评测记录，再运行 scripts.calibrate 拟合温度。</div>';
+    return;
+  }
+  const T = rel.temperature;
+  const cards = [
+    { k: "拟合温度 T", v: fmt(T, 2), d: T > 1 ? "软化过度自信" : (T < 1 ? "抬升置信" : "未校准"), cls: T > 1 ? "warn" : "" },
+    { k: "attempted 样本", v: rel.n_attempted, d: `共 ${meta ? meta.n_records : "?"} 条记录` },
+    { k: "ECE 原始→校准", v: `${fmt(rel.raw.ece)}→${fmt(rel.calibrated.ece)}`, d: `LOO ${fmt(rel.loo.ece)}`, cls: rel.calibrated.ece < rel.raw.ece ? "good" : "bad" },
+    { k: "Brier 原始→校准", v: `${fmt(rel.raw.brier)}→${fmt(rel.calibrated.brier)}`, d: `LOO ${fmt(rel.loo.brier)}`, cls: rel.calibrated.brier < rel.raw.brier ? "good" : "bad" },
+  ];
+  const wrap = document.createElement("div");
+  wrap.className = "cards";
+  for (const c of cards) {
+    const d = document.createElement("div");
+    d.className = "card";
+    d.innerHTML = `<div class="k">${c.k}</div><div class="v ${c.cls || ""}">${c.v}</div><div class="d">${c.d}</div>`;
+    wrap.appendChild(d);
+  }
+  box.appendChild(wrap);
+  if (rel.n_attempted < 20) {
+    const n = document.createElement("div");
+    n.className = "note";
+    n.textContent = `⚠ attempted 仅 ${rel.n_attempted} 条，LOO-CV 指标可能不稳（小样本温度拟合方差大）；in-sample 改善需更多数据验证。`;
+    box.appendChild(n);
+  }
+}
+
+function renderAblation(box, evals) {
+  box.replaceChildren();
+  if (!evals || !evals.length) {
+    box.innerHTML = '<div class="empty">out/ 下暂无评测汇总。运行 <code>python -m scripts.evaluate --system pipeline</code> 生成。</div>';
+    return;
+  }
+  const cols = [
+    ["n", m => m.n, 0], ["accuracy", m => m.accuracy, 3], ["弃权率", m => m.abstention_rate, 3],
+    ["macro-F1", m => m.macro_f1, 3], ["ECE", m => m.ece, 3], ["Brier", m => m.brier, 3],
+    ["tokens", m => m.total_tokens, 0], ["延迟ms", m => m.mean_latency_ms, 0],
+  ];
+  const table = document.createElement("table");
+  const thead = document.createElement("tr");
+  thead.innerHTML = "<th>运行</th>" + cols.map(c => `<th>${c[0]}</th>`).join("") + "<th>失败</th>";
+  table.appendChild(thead);
+  for (const e of evals) {
+    const m = e.metrics || {};
+    const tr = document.createElement("tr");
+    const label = `${e.dir || ""}/${e.system || ""}`;
+    tr.innerHTML = `<td class="name">${label}</td>` + cols.map(c => `<td>${fmt(c[1](m), c[2])}</td>`).join("")
+      + `<td>${e.n_failed || 0}</td>`;
+    table.appendChild(tr);
+  }
+  box.appendChild(table);
+
+  // accuracy / macro-F1 分组条形图
+  const rows = evals.slice(0, 8);
+  const W = 460, H = 40 + rows.length * 34, pad = { l: 130, r: 40, t: 10, b: 20 };
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}` }, box);
+  const iw = W - pad.l - pad.r;
+  const bh = 12;
+  rows.forEach((e, i) => {
+    const m = e.metrics || {};
+    const y = pad.t + i * 34;
+    txt(svg, pad.l - 8, y + 16, `${e.dir || e.system}`, { "text-anchor": "end", fill: "#c3c9d6" });
+    const acc = m.accuracy || 0, f1 = m.macro_f1 || 0;
+    el("rect", { x: pad.l, y, width: iw * acc, height: bh, fill: "#3b82f6", "fill-opacity": 0.85 }, svg);
+    el("rect", { x: pad.l, y: y + bh + 2, width: iw * f1, height: bh, fill: "#22c55e", "fill-opacity": 0.85 }, svg);
+    txt(svg, pad.l + iw * acc + 5, y + 10, fmt(acc, 2), { fill: "#8b93a7" });
+    txt(svg, pad.l + iw * f1 + 5, y + bh + 12, fmt(f1, 2), { fill: "#8b93a7" });
+  });
+  const leg = document.createElement("div");
+  leg.className = "legend";
+  leg.innerHTML = '<span><i class="swatch box" style="background:#3b82f6"></i>accuracy</span>'
+    + '<span><i class="swatch box" style="background:#22c55e"></i>macro-F1</span>';
+  box.appendChild(leg);
+}
+
+async function load() {
+  let cal = { calibrator: null, reliability: null }, evals = [];
+  try {
+    const r = await fetch("/api/calibration");
+    if (r.ok) cal = await r.json();
+  } catch (e) {}
+  try {
+    const r = await fetch("/api/evals");
+    if (r.ok) evals = (await r.json()).evals || [];
+  } catch (e) {}
+  renderSummary(document.getElementById("cal-summary"), cal.reliability, cal.calibrator);
+  renderReliability(document.getElementById("reliability"), cal.reliability);
+  renderHistogram(document.getElementById("histogram"), cal.reliability);
+  renderAblation(document.getElementById("ablation"), evals);
+}
+load();
+</script>
+</body>
+</html>
