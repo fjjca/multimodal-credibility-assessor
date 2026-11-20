@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     enable_debate: bool = True
     enable_escalation: bool = True
     enable_langgraph: bool = False
+    enable_checkpoint: bool = False
+    checkpoint_path: str = ".data/langgraph_checkpoints.sqlite"
     enable_calibration: bool = False
     calibrator_path: str = ".data/calibrator.json"
     debate_max_rounds: int = 1

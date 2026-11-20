@@ -33,7 +33,7 @@
 - **OpenAI 兼容接口**：所有模型调用走统一 provider:model 配置，为私有化部署埋伏笔。
 - **评测与一键部署**：可复现的指标（准确率/弃权率/macro-F1/成本）+ `docker compose up` 一条命令起服务。
 - **轻量可观测性**：结构化 JSON 日志 + Prometheus `/metrics`，token/延迟/失败/升级四类信号零外部服务落地，token 只计实时调用与成本口径对齐。
-- **LangGraph 可选编排 + 循环辩论**：`ENABLE_LANGGRAPH` 一行切换 StateGraph 与手写直线 runner，单轮逐字节等价（parity 测试），多轮控辩裁成环收敛——把"循环条件路由 + 状态归约"做成可 A/B、可回退的一等结构，而非为用框架而重写。
+- **LangGraph 可选编排 + 循环辩论 + 检查点续跑**：`ENABLE_LANGGRAPH` 一行切换 StateGraph 与手写直线 runner，单轮逐字节等价（parity 测试），多轮控辩裁成环收敛；`ENABLE_CHECKPOINT` 再叠加 SqliteSaver 按 thread_id 持久化、崩溃后同 thread_id 续跑不重算——把"循环条件路由 + 状态归约 + 持久化"做成可 A/B、可回退的一等结构，而非为用框架而重写。
 - **事后置信度校准 + 评测 Dashboard**：温度缩放（纯 Python，无 numpy/scipy）软化免费裁判的过度自信，报 ECE/MCE/Brier 与 **LOO-CV** 诚实小样本指标；`/dashboard.html` 纯 SVG（无 CDN）渲染可靠性曲线、置信度分布与消融对比。校准只变换上报置信度，编排路由仍用原始 conf，parity 不被破坏。
 
 ## 快速开始
@@ -73,6 +73,7 @@ cp .env.example .env                             # 填入 key
 
 - `ENABLE_RETRIEVAL` / `ENABLE_DEBATE` / `ENABLE_ESCALATION`：组件消融开关。
 - `ENABLE_LANGGRAPH`（默认 false）/ `DEBATE_MAX_ROUNDS`（默认 1）：编排开关与辩论轮数，详见[编排小节](#编排langgraphflag-门控可选)。
+- `ENABLE_CHECKPOINT`（默认 false）/ `CHECKPOINT_PATH`：LangGraph 检查点续跑（M2），仅 `ENABLE_LANGGRAPH=true` 时生效，详见[检查点小节](#检查点续跑m2enable_checkpoint-门控)。
 - `ENABLE_CALIBRATION`（默认 false）/ `CALIBRATOR_PATH`（默认 `.data/calibrator.json`）：事后置信度校准开关与 artifact 路径，详见[校准小节](#置信度校准与评测-dashboard)。
 - `JUDGE_CONFIDENCE_THRESHOLD`（默认 0.6）：低于此值升级强裁判。
 - `LLM_CACHE_MODE`：`off` / `readwrite`（默认） / `replay`（无 key 时回放已录制响应）。
@@ -186,6 +187,15 @@ START → decompose → forensics → retrieve → graph → debate_start
 - **收敛**：裁判置信度 ≥ 阈值即停；否则进入下一轮，把上一轮裁判意见注入控辩 prompt（`judge_feedback`），受 `DEBATE_MAX_ROUNDS` 硬上限约束（默认 1 = 现行为）。
 - **升级在循环之后**：触顶或收敛后若仍低置信，再走 `escalate` 升级强裁判；内容审核降级（`judge_model=""`）既不循环也不升级。
 
+### 检查点续跑（M2，`ENABLE_CHECKPOINT` 门控）
+
+`ENABLE_LANGGRAPH=true` 且 `ENABLE_CHECKPOINT=true` 时，`AsyncSqliteSaver` 按 `thread_id`（=trace_id）把每个超步的状态持久化到 `CHECKPOINT_PATH`（sqlite）。崩溃/中断后用**同一 thread_id** 重跑即续跑：已有检查点则传 `None` 恢复待执行节点，**已完成超步不重算**（省 token、省时间）。默认 `false` 零开销、不建文件。
+
+- **serde**：state 携带 `nx.Graph` / dataclass / pydantic，msgpack 无法直接编码，故用 `JsonPlusSerializer(pickle_fallback=True)`；pickle 仅作用于**本地自有检查点文件**（可信 artifact），不接外部输入。
+- **parity 不受影响**：检查点只加持久化，不改节点逻辑与输出契约；测试断言开/关检查点与 linear 三者输出一致（剔除 trace_id）。
+- **续跑测试**：mock judge 首次抛异常模拟崩溃，同 thread_id 重跑后仅补 judge，decompose/prosecutor/defender 调用次数不增。
+- 这是 HITL（M3 `interrupt` 人工介入）的前置：有了持久化状态，才能在低置信/弃权处暂停等待人工再恢复。
+
 A/B 消融（同口径、分目录、cache off 独立计 token）。多模态 `multimodal_demo` 依赖 forensics VLM，跑时若遇 `glm-4.6v-flash` 免费档 429 冷却，可改用文本 `eval_seed`（无图跳过 forensics，检索 on 接地）：
 
 ```bash
@@ -216,7 +226,7 @@ ENABLE_LANGGRAPH=true DEBATE_MAX_ROUNDS=3 LLM_CACHE_MODE=off ENABLE_RETRIEVAL=tr
 - **循环未触发**：r3 全部 `rounds=1`、裁决 `n_calls=3`——免费裁判 `glm-4.7-flash` 过度自信（置信度 0.85–1.0，连判错也 0.95），从不跌破 0.6 阈值，故控辩裁循环与置信度升级都不激活。r3 与 r1 的结论差异（s03/s04/s05）是 cache off + temperature>0 的**调用抖动**，非多轮效果；准确率下降源于 s01 限流失败 + 抖动。
 - **真正瓶颈是校准，不是编排**：循环机制本身正确（离线 mock 低置信测试已证收敛 / 硬上限 / 升级），但其置信度触发器在过度自信的免费裁判下很少激活。多轮辩论的准确率增益需在裁判会表达不确定的数据 / 模型上才显现——置信度校准已在[校准小节](#置信度校准与评测-dashboard)落地（温度缩放 + LOO-CV），更强裁判仍待验证。
 
-> 成本：多轮 = 控/辩/裁各多调用 N−1 次，token 随轮数近似线性增长；本次因裁判过度自信未触发，r3 与 r1 同成本。`DEBATE_MAX_ROUNDS=1` 与直线 runner 同成本，是"零代价拿到 LangGraph 编排能力"的默认档。检查点续跑（M2）/ HITL 人工介入（M3）尚未引入，见 v2 路线。
+> 成本：多轮 = 控/辩/裁各多调用 N−1 次，token 随轮数近似线性增长；本次因裁判过度自信未触发，r3 与 r1 同成本。`DEBATE_MAX_ROUNDS=1` 与直线 runner 同成本，是"零代价拿到 LangGraph 编排能力"的默认档。检查点续跑（M2）已落地（见上），HITL 人工介入（M3）尚未引入，见 v2 路线。
 
 ## 置信度校准与评测 Dashboard
 
@@ -257,7 +267,7 @@ ENABLE_CALIBRATION=true .venv/Scripts/python -m app
 ## 测试
 
 ```bash
-.venv/Scripts/python -m pytest        # 122 项，覆盖客户端/缓存/各流水线阶段/取证/路由/评测/API/可观测性/LangGraph 编排与循环辩论/置信度校准
+.venv/Scripts/python -m pytest        # 125 项，覆盖客户端/缓存/各流水线阶段/取证/路由/评测/API/可观测性/LangGraph 编排/循环辩论/检查点续跑/置信度校准
 ```
 
 ## 项目结构
@@ -281,4 +291,4 @@ data/                  # 评测数据集与合成图像
 
 - **成本**：默认全免费三模型分工，预算 ≈ ¥0；升级付费裁判单条约 ¥0.003–0.005。免费档有账户级并发限制，客户端带并发上限 + 指数退避；评测支持断点续跑。
 - **限制**：多模态评测基于小规模合成用例；单图输入；检索依赖 Tavily 免费档质量；裁决质量受免费模型能力约束。
-- **v2 路线**：LangGraph 检查点续跑（SqliteSaver）/ HITL 人工介入（interrupt）、反向搜图 / 图片挪用检测、视频与多图、Neo4j + 可信度传播 / 多跳推理、Redis/Celery、OTel/Langfuse 分布式追踪（在现有 Prometheus+JSON 之上）、本地 vLLM、React 前端。
+- **v2 路线**：LangGraph HITL 人工介入（interrupt，检查点已就绪）、反向搜图 / 图片挪用检测、视频与多图、Neo4j + 可信度传播 / 多跳推理、Redis/Celery、OTel/Langfuse 分布式追踪（在现有 Prometheus+JSON 之上）、本地 vLLM、React 前端。

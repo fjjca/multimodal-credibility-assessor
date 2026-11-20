@@ -4,7 +4,8 @@
 只重排编排，从而保证返回 dict / SSE 事件 / trace 落盘契约与 linear 一致。
 多轮辩论用条件边成环（prosecutor→defender→judge→next_round→prosecutor），
 受 debate_max_rounds 硬上限收敛；整个辩论对外仍是单个 adjudicate 阶段（running→done）。
-emit 与依赖经闭包注入，数据流经 State reducer 累积；无检查点（M2 再引入持久化）。
+emit 与依赖经闭包注入，数据流经 State reducer 累积；`ENABLE_CHECKPOINT` 门控 AsyncSqliteSaver
+按 thread_id 持久化每个超步，中断/崩溃后同 thread_id 续跑（已完成节点不重算）；默认关闭零开销。
 """
 
 import operator
@@ -55,7 +56,7 @@ class GraphState(TypedDict, total=False):
     result: dict | None
 
 
-def build_pipeline_graph(settings, client, retriever, emit, trace_id):
+def build_pipeline_graph(settings, client, retriever, emit, trace_id, checkpointer=None):
     stage_started: dict[str, float] = {}
 
     async def begin(sid: str, label: str) -> None:
@@ -260,16 +261,35 @@ def build_pipeline_graph(settings, client, retriever, emit, trace_id):
     builder.add_edge("escalate", "debate_end")
     builder.add_edge("debate_end", "finalize")
     builder.add_edge("finalize", END)
-    return builder.compile()
+    return builder.compile(checkpointer=checkpointer)
 
 
 async def run_graph_pipeline(
     text: str, image_path: str | None, emit, *, settings, client, retriever, trace_id: str
 ) -> dict:
-    app = build_pipeline_graph(settings, client, retriever, emit, trace_id)
     initial = {
         "text": text, "image_path": image_path,
         "results": [], "adj_results": [], "trace": [],
     }
-    final = await app.ainvoke(initial, {"configurable": {"thread_id": trace_id}})
+    config = {"configurable": {"thread_id": trace_id}}
+    if settings.enable_checkpoint:
+        # 懒加载：默认档不依赖 sqlite saver；检查点按 thread_id 持久化，崩溃/中断后同 thread_id 续跑
+        from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+        from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+
+        Path(settings.checkpoint_path).parent.mkdir(parents=True, exist_ok=True)
+        async with AsyncSqliteSaver.from_conn_string(settings.checkpoint_path) as saver:
+            # state 携带 nx.Graph / dataclass / pydantic，msgpack 无法直接编码；
+            # pickle_fallback 仅用于本地自有检查点文件（可信 artifact），不接外部输入
+            saver.serde = JsonPlusSerializer(pickle_fallback=True)
+            await saver.setup()
+            app = build_pipeline_graph(
+                settings, client, retriever, emit, trace_id, checkpointer=saver
+            )
+            # 已有检查点=中断/崩溃后的续跑：传 None 恢复待执行节点，不重算已完成超步
+            existing = await saver.aget(config)
+            final = await app.ainvoke(None if existing else initial, config)
+    else:
+        app = build_pipeline_graph(settings, client, retriever, emit, trace_id)
+        final = await app.ainvoke(initial, config)
     return final["result"]

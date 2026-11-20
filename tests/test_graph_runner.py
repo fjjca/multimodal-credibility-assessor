@@ -252,3 +252,73 @@ async def test_multi_round_then_escalate(tmp_path, monkeypatch):
     judge_overrides = [o for r, o in calls if r == "judge"]
     assert judge_overrides == [None, None, "zhipu:glm-4.5-flash"]  # 2轮循环 + 升级
     assert res["escalated"] is True and res["verdict"] == "refuted"
+
+
+async def test_checkpoint_parity_and_artifact(tmp_path, monkeypatch):
+    ck = str(tmp_path / "ck.sqlite")
+    lin_res, _, _ = await _run(tmp_path, monkeypatch, False, trace_id="ck_lin")
+    on_res, _, _ = await _run(
+        tmp_path, monkeypatch, True, trace_id="ck_on",
+        enable_checkpoint=True, checkpoint_path=ck,
+    )
+    off_res, _, _ = await _run(tmp_path, monkeypatch, True, trace_id="ck_off")
+    # trace_id 因线程隔离而不同，剔除后比较输出契约
+    strip = lambda r: {k: v for k, v in r.items() if k != "trace_id"}
+    assert strip(on_res) == strip(lin_res) == strip(off_res)
+    assert (tmp_path / "ck.sqlite").exists()
+
+
+async def test_checkpoint_disabled_creates_no_file(tmp_path, monkeypatch):
+    ck = tmp_path / "none.sqlite"
+    await _run(
+        tmp_path, monkeypatch, True, trace_id="ck_dis",
+        enable_checkpoint=False, checkpoint_path=str(ck),
+    )
+    assert not ck.exists()
+
+
+async def test_checkpoint_resume_skips_completed_nodes(tmp_path, monkeypatch):
+    settings = _settings(
+        tmp_path, True, enable_retrieval=False, enable_escalation=False,
+        enable_checkpoint=True, checkpoint_path=str(tmp_path / "ck.sqlite"),
+    )
+    client = LLMClient(settings)
+    calls = []
+    n = {"judge": 0}
+
+    async def fake_chat(role, messages, **kw):
+        calls.append(role)
+        usage = {"total_tokens": 10}
+        if role == "judge":
+            n["judge"] += 1
+            if n["judge"] == 1:
+                raise RuntimeError("simulated crash")
+            return LLMResult(content=_HIGH, model="m", usage=usage)
+        if role == "prosecutor":
+            return LLMResult(content='{"argument":"虚假"}', model="m", usage=usage)
+        if role == "defender":
+            return LLMResult(content='{"argument":"真实"}', model="m", usage=usage)
+        if "断言拆解器" in messages[0]["content"]:
+            return LLMResult(content='[{"text":"断言A"}]', model="m", usage=usage)
+        return LLMResult(content="[]", model="m", usage=usage)
+
+    monkeypatch.setattr(client, "chat", fake_chat)
+
+    async def emit(event, data):
+        pass
+
+    with pytest.raises(RuntimeError):
+        await run_pipeline(
+            "帖子", None, emit, settings=settings, client=client,
+            retriever=FakeRetriever([]), trace_id="resume1",
+        )
+    first = list(calls)
+    assert "judge" in first  # 崩溃发生在 judge
+
+    res = await run_pipeline(
+        "帖子", None, emit, settings=settings, client=client,
+        retriever=FakeRetriever([]), trace_id="resume1",
+    )
+    assert res["verdict"] == "refuted"
+    # 续跑只补崩溃的 judge，decompose/prosecutor/defender 不重算
+    assert calls[len(first):] == ["judge"]
