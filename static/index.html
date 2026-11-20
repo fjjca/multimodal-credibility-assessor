@@ -63,6 +63,25 @@
   .badge.social { background: #78350f; color: #fcd34d; }
   .badge.unknown, .badge.same_source { background: #334155; color: #cbd5e1; }
   .badge.contradict { background: #7f1d1d; color: #fca5a5; }
+  .badge.review { background: #1e3a8a; color: #bfdbfe; }
+  .toggle-row { margin: 4px 0 10px; }
+  .rsection { margin-top: 14px; padding: 12px; background: #131a29; border: 1px solid #2a3348; border-radius: 8px; }
+  .rsection h3 { margin: 0 0 8px; font-size: 14px; }
+  .rclaim { padding: 8px 0; border-bottom: 1px solid #1d2536; }
+  .rclaim:last-child { border-bottom: none; }
+  .rclaim-text { font-size: 13px; color: #e6e9f0; margin-bottom: 4px; }
+  .evline { font-size: 12px; margin: 3px 0; color: #c3c9d6; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .evline a { color: #3b82f6; text-decoration: none; }
+  .evline a:hover { text-decoration: underline; }
+  .evline .w { color: #64748b; }
+  .evnone { font-size: 12px; color: #64748b; }
+  .rlabel { font-size: 12px; color: #8b93a7; margin: 6px 0 4px; }
+  details { margin: 6px 0; }
+  summary { cursor: pointer; font-size: 13px; color: #8b93a7; }
+  summary:hover { color: #c3c9d6; }
+  .argbody { font-size: 12px; color: #c3c9d6; white-space: pre-wrap; word-break: break-all; margin: 6px 0; max-height: 200px; overflow: auto; }
+  .runinfo .kv { font-size: 12px; color: #c3c9d6; margin: 4px 0; }
+  .runinfo .kv b { color: #8b93a7; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -158,7 +177,9 @@ function renderGraph(elements, evidenceChain) {
   };
   const fitBtn = mkBtn("适应画布");
   const layoutBtn = mkBtn("重新布局");
-  const chain = (evidenceChain || []).filter(Boolean);
+  const chain = (evidenceChain || [])
+    .map((c) => (typeof c === "string" ? c : c && c.id))
+    .filter(Boolean);
   const chainBtn = chain.length ? mkBtn(`高亮裁决证据链（${chain.length}）`) : null;
 
   // 图例 = 过滤器：关系三类 + 来源四级，点击切换显示
@@ -418,6 +439,124 @@ function showReview(taskId, p) {
   reviewBox.style.display = "block";
 }
 
+function mkBadge(cls, text) {
+  const b = document.createElement("span");
+  b.className = `badge ${cls}`;
+  b.textContent = text;
+  return b;
+}
+
+function evLine(it, rel) {
+  const line = document.createElement("div");
+  line.className = "evline";
+  if (rel) line.append(mkBadge(rel, REL_LABELS[rel] || rel));
+  const tier = it.source_tier || "unknown";
+  line.append(mkBadge(tier, TIER_LABELS[tier] || "未知"));
+  if (/^https?:\/\//.test(it.url || "")) {
+    const a = document.createElement("a");
+    a.href = it.url; a.target = "_blank"; a.rel = "noopener noreferrer";
+    a.textContent = it.title || it.url;
+    line.append(a);
+  } else {
+    const s = document.createElement("span");
+    s.textContent = it.title || it.id || "";
+    line.append(s);
+  }
+  if (it.weight != null) {
+    const w = document.createElement("span");
+    w.className = "w";
+    w.textContent = `权重 ${Number(it.weight).toFixed(2)}`;
+    line.append(w);
+  }
+  return line;
+}
+
+function renderReport(p) {
+  const claimsSec = document.createElement("div");
+  claimsSec.className = "rsection";
+  const ch = document.createElement("h3");
+  ch.textContent = "断言核查清单";
+  claimsSec.append(ch);
+  if (p.graph_summary && p.graph_summary.length) {
+    for (const s of p.graph_summary) {
+      const card = document.createElement("div");
+      card.className = "rclaim";
+      const t = document.createElement("div");
+      t.className = "rclaim-text";
+      t.textContent = s.text;
+      card.append(t);
+      let any = false;
+      for (const [rel, items] of [["support", s.support], ["contradict", s.contradict]]) {
+        for (const it of items || []) { any = true; card.append(evLine(it, rel)); }
+      }
+      if (!any) {
+        const none = document.createElement("div");
+        none.className = "evnone";
+        none.textContent = "暂无支持/矛盾证据";
+        card.append(none);
+      }
+      claimsSec.append(card);
+    }
+  } else {
+    for (const c of p.claims || []) {
+      const d = document.createElement("div");
+      d.className = "rclaim-text";
+      d.textContent = c.text;
+      claimsSec.append(d);
+    }
+  }
+
+  const basisSec = document.createElement("div");
+  basisSec.className = "rsection";
+  const bh = document.createElement("h3");
+  bh.textContent = "裁决依据";
+  basisSec.append(bh);
+  if ((p.evidence_chain || []).length) {
+    const lab = document.createElement("div");
+    lab.className = "rlabel";
+    lab.textContent = "裁判引用的证据链";
+    basisSec.append(lab);
+    for (const it of p.evidence_chain) basisSec.append(evLine(it, null));
+  }
+  for (const [key, label] of [["prosecutor", "控方论证（点击展开）"], ["defender", "辩方论证（点击展开）"]]) {
+    if (!p[key]) continue;
+    const det = document.createElement("details");
+    const sum = document.createElement("summary");
+    sum.textContent = label;
+    const body = document.createElement("div");
+    body.className = "argbody";
+    body.textContent = p[key];
+    det.append(sum, body);
+    basisSec.append(det);
+  }
+
+  const runinfo = document.createElement("details");
+  runinfo.className = "rsection runinfo";
+  const rs = document.createElement("summary");
+  rs.textContent = "运行信息（模型 / 消耗 / 追踪）";
+  runinfo.append(rs);
+  const conf = p.confidence != null
+    ? `${Number(p.confidence).toFixed(2)}（原始 ${p.confidence_raw != null ? Number(p.confidence_raw).toFixed(2) : "—"}）`
+    : "—";
+  const rows = [
+    ["裁判模型", p.judge_model || "默认"],
+    ["升级强裁判", p.escalated ? "是" : "否"],
+    ["人工复核", p.human_review ? "是" : "否"],
+    ["置信度", conf],
+    ["Token 消耗", p.usage ? `${p.usage.total_tokens}（${p.usage.n_calls} 次调用，缓存命中 ${p.usage.cached}）` : "—"],
+    ["追踪 ID", p.trace_id || "—"],
+  ];
+  for (const [k, val] of rows) {
+    const d = document.createElement("div");
+    d.className = "kv";
+    const b = document.createElement("b");
+    b.textContent = k + "：";
+    d.append(b, document.createTextNode(val));
+    runinfo.append(d);
+  }
+  return [claimsSec, basisSec, runinfo];
+}
+
 function showResult(title, payload) {
   reviewBox.style.display = "none";
   resultBox.replaceChildren();
@@ -425,7 +564,8 @@ function showResult(title, payload) {
   v.className = "verdict";
   v.textContent = title;
   resultBox.append(v);
-  if (payload && typeof payload === "object" && (payload.reason || payload.confidence != null)) {
+  const isObj = payload && typeof payload === "object";
+  if (isObj && (payload.reason || payload.confidence != null)) {
     const meta = document.createElement("div");
     meta.className = "sub";
     meta.style.margin = "6px 0 10px";
@@ -433,22 +573,48 @@ function showResult(title, payload) {
     meta.textContent = conf + (payload.reason || "");
     resultBox.append(meta);
   }
-  if (payload && typeof payload === "object" && payload.escalated) {
+  if (isObj && payload.escalated) {
     const route = document.createElement("div");
     route.className = "route";
     route.textContent = `低置信度已升级强模型裁决：${payload.judge_model || ""}`;
     resultBox.append(route);
   }
-  if (payload && typeof payload === "object" && payload.forensics) {
-    resultBox.append(renderForensics(payload.forensics));
+  if (isObj && payload.human_review) {
+    v.append(document.createTextNode(" "), mkBadge("review", "人工复核"));
   }
-  if (payload && typeof payload === "object" && payload.graph_elements) {
-    const gb = renderGraph(payload.graph_elements, payload.evidence_chain);
-    if (gb) resultBox.append(gb);
+  if (isObj) {
+    const human = document.createElement("div");
+    const [claimsSec, basisSec, runinfo] = renderReport(payload);
+    human.append(claimsSec, basisSec);
+    if (payload.forensics) human.append(renderForensics(payload.forensics));
+    if (payload.graph_elements) {
+      const gb = renderGraph(payload.graph_elements, payload.evidence_chain);
+      if (gb) human.append(gb);
+    }
+    human.append(runinfo);
+    const pre = document.createElement("pre");
+    pre.textContent = JSON.stringify(payload, null, 2);
+    pre.style.display = "none";
+    const toggleRow = document.createElement("div");
+    toggleRow.className = "toggle-row";
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "gbtn";
+    toggle.textContent = "查看原始 JSON";
+    let raw = false;
+    toggle.addEventListener("click", () => {
+      raw = !raw;
+      human.style.display = raw ? "none" : "block";
+      pre.style.display = raw ? "block" : "none";
+      toggle.textContent = raw ? "返回报告视图" : "查看原始 JSON";
+    });
+    toggleRow.append(toggle);
+    resultBox.append(toggleRow, human, pre);
+  } else {
+    const pre = document.createElement("pre");
+    pre.textContent = String(payload);
+    resultBox.append(pre);
   }
-  const pre = document.createElement("pre");
-  pre.textContent = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
-  resultBox.append(pre);
   resultBox.style.display = "block";
   submitBtn.disabled = false;
 }
