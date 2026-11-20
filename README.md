@@ -22,7 +22,7 @@
        结论(supported/refuted/misleading/unverifiable) + 证据链 + Cytoscape 证据图
 ```
 
-前端为原生 JS 单页（`static/index.html`），通过 SSE 实时展示每个阶段的状态与细节，并渲染取证面板与证据图。
+前端为原生 JS 单页（`static/index.html`），通过 SSE 实时展示每个阶段的状态与细节，并渲染取证面板与证据图。证据图（本地 vendored Cytoscape，无 CDN）支持交互：**点击节点/边出详情卡**（证据的来源分级/检索分/原文链接/内容摘录/关联断言，断言的支持/矛盾证据列表可点击跳转）、**选中邻域高亮**其余淡出、**图例即过滤器**（支持/矛盾/同源 × 官方/主流媒体/社交/未知）、**边宽 ∝ 来源 tier 权重**、**一键高亮裁决引用的证据链**（`evidence_chain` 定位居中）、适应画布/重新布局。节点数据经 `graph_elements` 携带 url/content/score（只读展示）；外链仅放行 http(s) 协议。
 
 ## 设计亮点
 

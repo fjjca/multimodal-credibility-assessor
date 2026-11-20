@@ -93,6 +93,8 @@ def test_graph_elements_cytoscape_shape():
     nodes = {n["data"]["id"]: n["data"] for n in el["nodes"]}
     assert nodes["c1"]["kind"] == "claim" and nodes["c1"]["label"] == "断言一"
     assert nodes["e1"]["kind"] == "evidence" and nodes["e1"]["source_tier"] == "official"
+    assert nodes["e1"]["url"] == "https://www.gov.cn/a" and nodes["e1"]["content"] == "x"
+    assert "score" in nodes["e1"] and "url" not in nodes["c1"]
     rels = {(e["data"]["source"], e["data"]["target"]): e["data"] for e in el["edges"]}
     assert rels[("c1", "e1")]["relation"] == "support"
     assert rels[("c1", "e2")]["relation"] == "contradict"

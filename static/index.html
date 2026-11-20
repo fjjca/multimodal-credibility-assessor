@@ -42,11 +42,27 @@
   .review-note { font-size: 12px; color: #f59e0b; margin: 6px 0; }
   .graphbox { margin-top: 14px; padding: 12px; background: #131a29; border: 1px solid #2a3348; border-radius: 8px; }
   .graphbox h3 { margin: 0 0 8px; font-size: 14px; }
-  #cy { height: 300px; background: #0f1420; border-radius: 6px; }
+  #cy { height: 360px; background: #0f1420; border-radius: 6px; }
   .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; font-size: 12px; color: #8b93a7; }
-  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; }
+  .legend span.off { opacity: .35; text-decoration: line-through; }
   .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
   .swatch.line { height: 3px; border-radius: 2px; }
+  .gtoolbar { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 8px; }
+  .gbtn { background: #1d2536; border: 1px solid #2a3348; color: #c3c9d6; padding: 5px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+  .gbtn:hover { border-color: #3b82f6; }
+  .gbtn.active { background: #1e3a8a; border-color: #3b82f6; color: #fff; }
+  .gdetail { margin-top: 8px; padding: 10px; background: #0f1420; border: 1px solid #2a3348; border-radius: 6px; font-size: 13px; display: none; }
+  .gdetail h4 { margin: 0 0 6px; font-size: 13px; }
+  .gdetail a { color: #3b82f6; }
+  .gdetail .snippet { color: #8b93a7; font-size: 12px; margin: 6px 0; white-space: pre-wrap; word-break: break-all; max-height: 120px; overflow: auto; }
+  .gdetail .rel-line { margin: 4px 0; font-size: 12px; color: #c3c9d6; cursor: pointer; }
+  .gdetail .rel-line:hover { color: #fff; }
+  .badge.official, .badge.support { background: #14532d; color: #86efac; }
+  .badge.mainstream { background: #3f6212; color: #bef264; }
+  .badge.social { background: #78350f; color: #fcd34d; }
+  .badge.unknown, .badge.same_source { background: #334155; color: #cbd5e1; }
+  .badge.contradict { background: #7f1d1d; color: #fca5a5; }
 </style>
 </head>
 <body>
@@ -118,39 +134,184 @@ function renderForensics(fr) {
 }
 
 const TIER_COLORS = { official: "#22c55e", mainstream: "#84cc16", social: "#f59e0b", unknown: "#64748b" };
+const TIER_LABELS = { official: "官方", mainstream: "主流媒体", social: "社交", unknown: "未知" };
 const REL_COLORS = { support: "#22c55e", contradict: "#ef4444", same_source: "#64748b" };
+const REL_LABELS = { support: "支持", contradict: "矛盾", same_source: "同源" };
 
-function renderGraph(elements) {
+function renderGraph(elements, evidenceChain) {
   if (!elements || !elements.nodes || !elements.nodes.length) return null;
   const box = document.createElement("div");
   box.className = "graphbox";
   const h = document.createElement("h3");
-  h.textContent = "证据图（断言 ↔ 证据）";
-  const cy = document.createElement("div");
-  cy.id = "cy";
-  box.append(h, cy);
+  h.textContent = "证据图（断言 ↔ 证据）· 点击节点/边查看详情，图例可过滤";
+  const cyDiv = document.createElement("div");
+  cyDiv.id = "cy";
+
+  // 工具栏：适应画布 / 重新布局 / 高亮裁决证据链
+  const toolbar = document.createElement("div");
+  toolbar.className = "gtoolbar";
+  const mkBtn = (label) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "gbtn"; b.textContent = label;
+    toolbar.append(b);
+    return b;
+  };
+  const fitBtn = mkBtn("适应画布");
+  const layoutBtn = mkBtn("重新布局");
+  const chain = (evidenceChain || []).filter(Boolean);
+  const chainBtn = chain.length ? mkBtn(`高亮裁决证据链（${chain.length}）`) : null;
+
+  // 图例 = 过滤器：关系三类 + 来源四级，点击切换显示
   const legend = document.createElement("div");
   legend.className = "legend";
-  const item = (color, label, line) => {
+  const active = {
+    rels: new Set(Object.keys(REL_COLORS)),
+    tiers: new Set(Object.keys(TIER_COLORS)),
+  };
+  const legendItem = (color, label, line, group, key) => {
     const s = document.createElement("span");
     const sw = document.createElement("i");
     sw.className = "swatch" + (line ? " line" : "");
     sw.style.background = color;
     s.append(sw, document.createTextNode(label));
-    return s;
+    s.addEventListener("click", () => {
+      const set = active[group];
+      if (set.has(key)) { set.delete(key); s.classList.add("off"); }
+      else { set.add(key); s.classList.remove("off"); }
+      applyFilters();
+    });
+    legend.append(s);
   };
-  legend.append(
-    item("#3b82f6", "断言"),
-    item("#f59e0b", "证据(来源分级)"),
-    item(REL_COLORS.support, "支持", true),
-    item(REL_COLORS.contradict, "矛盾", true),
-    item(REL_COLORS.same_source, "同源", true),
-  );
-  box.append(legend);
+  legendItem("#3b82f6", "断言", false, "tiers", "__claim__");
+  active.tiers.add("__claim__");
+  for (const [k, label] of Object.entries(TIER_LABELS)) legendItem(TIER_COLORS[k], `证据·${label}`, false, "tiers", k);
+  for (const [k, label] of Object.entries(REL_LABELS)) legendItem(REL_COLORS[k], label, true, "rels", k);
+
+  const detail = document.createElement("div");
+  detail.className = "gdetail";
+  box.append(h, toolbar, cyDiv, legend, detail);
+
+  let cy = null;
+  let picked = null;
+  let chainOn = false;
+
+  const LAYOUT = { name: "cose", animate: false, nodeRepulsion: 8000, idealEdgeLength: 80 };
+  const otherEnd = (e, n) => (e.source().same(n) ? e.target() : e.source());
+
+  function applyFilters() {
+    if (!cy) return;
+    cy.edges().forEach((e) => {
+      e.style("display", active.rels.has(e.data("relation")) ? "element" : "none");
+    });
+    cy.nodes().forEach((n) => {
+      const ok = n.data("kind") === "claim"
+        ? active.tiers.has("__claim__")
+        : active.tiers.has(n.data("source_tier") || "unknown");
+      n.style("display", ok ? "element" : "none");
+    });
+  }
+
+  function clearPick() {
+    picked = null;
+    if (cy) cy.elements().removeClass("dimmed picked");
+    detail.style.display = "none";
+    detail.replaceChildren();
+  }
+
+  const badge = (cls, text) => {
+    const b = document.createElement("span");
+    b.className = `badge ${cls}`;
+    b.textContent = text;
+    return b;
+  };
+  const relLine = (label, rel, weight, onclick) => {
+    const line = document.createElement("div");
+    line.className = "rel-line";
+    line.append(document.createTextNode(label + " "), badge(rel, REL_LABELS[rel] || rel));
+    if (weight != null) line.append(document.createTextNode(` 权重 ${Number(weight).toFixed(2)}`));
+    if (onclick) line.addEventListener("click", onclick);
+    return line;
+  };
+
+  function showDetail(build) {
+    detail.replaceChildren();
+    build(detail);
+    detail.style.display = "block";
+  }
+
+  function nodeDetail(n) {
+    const d = n.data();
+    showDetail((card) => {
+      const t = document.createElement("h4");
+      t.textContent = d.kind === "claim" ? `断言 ${d.id}` : `证据 ${d.id}`;
+      card.append(t);
+      if (d.kind === "evidence") {
+        const meta = document.createElement("div");
+        meta.append(badge(d.source_tier || "unknown", TIER_LABELS[d.source_tier] || "未知"));
+        if (d.score != null) meta.append(document.createTextNode(` 检索分 ${Number(d.score).toFixed(2)}`));
+        card.append(meta);
+        if (/^https?:\/\//.test(d.url || "")) {
+          const a = document.createElement("a");
+          a.href = d.url; a.target = "_blank"; a.rel = "noopener noreferrer";
+          a.textContent = "来源原文 ↗";
+          const p = document.createElement("div");
+          p.style.margin = "6px 0";
+          p.append(a);
+          card.append(p);
+        }
+        if (d.content) {
+          const sn = document.createElement("div");
+          sn.className = "snippet";
+          sn.textContent = d.content.length > 300 ? d.content.slice(0, 300) + "…" : d.content;
+          card.append(sn);
+        }
+        n.connectedEdges().forEach((e) => {
+          const other = otherEnd(e, n);
+          if (other.data("kind") !== "claim") return;
+          card.append(relLine(other.data("label"), e.data("relation"), e.data("weight"), () => pickNode(other)));
+        });
+      } else {
+        const txt = document.createElement("div");
+        txt.textContent = d.label;
+        card.append(txt);
+        n.connectedEdges().forEach((e) => {
+          const other = otherEnd(e, n);
+          if (other.data("kind") !== "evidence") return;
+          card.append(relLine(other.data("label"), e.data("relation"), e.data("weight"), () => pickNode(other)));
+        });
+      }
+    });
+  }
+
+  function pickNode(n) {
+    picked = n;
+    cy.elements().removeClass("dimmed picked");
+    const hood = n.closedNeighborhood();
+    cy.elements().not(hood).addClass("dimmed");
+    n.addClass("picked");
+    nodeDetail(n);
+  }
+
+  function pickEdge(e) {
+    picked = e;
+    cy.elements().removeClass("dimmed picked");
+    const ends = e.connectedNodes();
+    cy.elements().not(ends.union(e)).addClass("dimmed");
+    e.addClass("picked");
+    showDetail((card) => {
+      const t = document.createElement("h4");
+      t.textContent = `关系：${REL_LABELS[e.data("relation")] || e.data("relation")}`;
+      card.append(t);
+      const meta = document.createElement("div");
+      meta.textContent = `${e.source().data("label")} ↔ ${e.target().data("label")} · 权重 ${Number(e.data("weight") || 0).toFixed(2)}`;
+      card.append(meta);
+    });
+  }
+
   // 容器须先入 DOM 且有尺寸，Cytoscape 才能正确布局
   requestAnimationFrame(() => {
-    cytoscape({
-      container: cy,
+    cy = cytoscape({
+      container: cyDiv,
       elements: { nodes: elements.nodes, edges: elements.edges },
       style: [
         { selector: "node", style: {
@@ -161,14 +322,43 @@ function renderGraph(elements) {
         { selector: 'node[kind="claim"]', style: { shape: "ellipse", "background-color": "#3b82f6" } },
         { selector: 'node[kind="evidence"]', style: { shape: "round-rectangle",
           "background-color": (ele) => TIER_COLORS[ele.data("source_tier")] || TIER_COLORS.unknown } },
-        { selector: "edge", style: { width: 2, "curve-style": "bezier", "line-color": "#64748b" } },
-        { selector: 'edge[relation="support"]', style: { "line-color": REL_COLORS.support, width: 3 } },
-        { selector: 'edge[relation="contradict"]', style: { "line-color": REL_COLORS.contradict, width: 3 } },
+        { selector: "edge", style: { width: 1.5, "curve-style": "bezier", "line-color": "#64748b" } },
+        { selector: 'edge[relation="support"]', style: {
+          "line-color": REL_COLORS.support, width: (ele) => 1.5 + 3 * (ele.data("weight") || 0.5) } },
+        { selector: 'edge[relation="contradict"]', style: {
+          "line-color": REL_COLORS.contradict, width: (ele) => 1.5 + 3 * (ele.data("weight") || 0.5) } },
         { selector: 'edge[relation="same_source"]', style: { "line-color": REL_COLORS.same_source, "line-style": "dashed" } },
+        { selector: ".dimmed", style: { opacity: 0.12 } },
+        { selector: ".picked", style: { "border-width": 3, "border-color": "#e6e9f0" } },
+        { selector: ".chain", style: { "border-width": 3, "border-color": "#f59e0b" } },
       ],
-      layout: { name: "cose", animate: false, nodeRepulsion: 8000, idealEdgeLength: 80 },
+      layout: LAYOUT,
     });
+    cy.on("tap", "node", (evt) => pickNode(evt.target));
+    cy.on("tap", "edge", (evt) => pickEdge(evt.target));
+    cy.on("tap", (evt) => { if (evt.target === cy) clearPick(); });
+    applyFilters();
   });
+
+  fitBtn.addEventListener("click", () => cy && cy.fit(undefined, 30));
+  layoutBtn.addEventListener("click", () => cy && cy.layout(LAYOUT).run());
+  if (chainBtn) {
+    chainBtn.addEventListener("click", () => {
+      if (!cy) return;
+      chainOn = !chainOn;
+      chainBtn.classList.toggle("active", chainOn);
+      cy.elements().removeClass("chain dimmed picked");
+      picked = null;
+      detail.style.display = "none";
+      if (!chainOn) return;
+      const nodes = chain.map((id) => cy.getElementById(id)).filter((n) => n.nonempty());
+      if (!nodes.length) return;
+      const col = cy.collection(nodes);
+      col.addClass("chain");
+      cy.elements().not(col.closedNeighborhood()).addClass("dimmed");
+      cy.animate({ fit: { eles: col, padding: 50 } }, { duration: 300 });
+    });
+  }
   return box;
 }
 
@@ -253,7 +443,7 @@ function showResult(title, payload) {
     resultBox.append(renderForensics(payload.forensics));
   }
   if (payload && typeof payload === "object" && payload.graph_elements) {
-    const gb = renderGraph(payload.graph_elements);
+    const gb = renderGraph(payload.graph_elements, payload.evidence_chain);
     if (gb) resultBox.append(gb);
   }
   const pre = document.createElement("pre");

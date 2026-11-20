@@ -111,25 +111,30 @@ def load_graph(path: str | Path) -> nx.Graph:
 
 
 def graph_elements(g: nx.Graph) -> dict:
-    """Cytoscape.js 元素：claim/evidence 节点 + support/contradict/same_source 边。"""
+    """Cytoscape.js 元素：claim/evidence 节点 + support/contradict/same_source 边。
+
+    evidence 节点携带 url/content/score 供前端详情卡使用（只读展示，不回写图）。
+    """
     nodes = []
     for nid, d in g.nodes(data=True):
         kind = d.get("kind", "evidence")
         label = d.get("text") if kind == "claim" else d.get("title", "")
-        nodes.append(
-            {
-                "data": {
-                    "id": nid,
-                    "kind": kind,
-                    "label": label or nid,
-                    "source_tier": d.get("source_tier", ""),
-                }
-            }
-        )
+        data = {
+            "id": nid,
+            "kind": kind,
+            "label": label or nid,
+            "source_tier": d.get("source_tier", ""),
+        }
+        if kind == "evidence":
+            data["url"] = d.get("url", "")
+            data["content"] = d.get("content", "")
+            data["score"] = d.get("score")
+        nodes.append({"data": data})
     edges = [
         {
             "data": {
-                "id": f"e{i}",
+                # 边 id 不得与证据节点 id（e1/e2…）冲突，否则 Cytoscape 静默丢弃重名元素
+                "id": f"edge{i}",
                 "source": a,
                 "target": b,
                 "relation": d.get("relation", ""),
