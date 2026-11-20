@@ -10,12 +10,15 @@ emit 与依赖经闭包注入，数据流经 State reducer 累积；`ENABLE_CHEC
 
 import operator
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, TypedDict
 
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import Command, interrupt
 
 from app import obs
+from app.eval.schema import ABSTAIN, parse_verdict
 from app.pipeline.adjudicate import (
     DEFENDER_SYSTEM,
     PROSECUTOR_SYSTEM,
@@ -204,6 +207,32 @@ def build_pipeline_graph(settings, client, retriever, emit, trace_id, checkpoint
         entry = await done("adjudicate", "多模型裁决", detail, state["adj_results"])
         return {"verdict": verdict, "trace": [entry]}
 
+    async def review_node(state: GraphState) -> dict:
+        # HITL：弃权或低置信时 interrupt 暂停等人工复核；恢复值=人工裁决（空 dict=维持原判）
+        verdict = state["verdict"]
+        conf = verdict["confidence"]
+        low = conf is None or conf < settings.judge_confidence_threshold
+        if not (settings.enable_hitl and (verdict["verdict"] == ABSTAIN or low)):
+            return {}
+        payload = {
+            "verdict": verdict["verdict"], "confidence": conf, "reason": verdict["reason"],
+            "claims": [c.text for c in state["claims"]],
+        }
+        decision = interrupt(payload)
+        verdict = dict(verdict)
+        verdict["human_review"] = True
+        if isinstance(decision, dict):
+            if decision.get("verdict"):
+                verdict["verdict"] = parse_verdict(str(decision["verdict"]))
+            if decision.get("confidence") is not None:
+                try:
+                    verdict["confidence"] = float(decision["confidence"])
+                except (TypeError, ValueError):
+                    pass
+            if decision.get("reason"):
+                verdict["reason"] = str(decision["reason"])
+        return {"verdict": verdict}
+
     def route_debate_start(state: GraphState) -> str:
         return "prosecutor" if settings.enable_debate else "judge"
 
@@ -239,7 +268,7 @@ def build_pipeline_graph(settings, client, retriever, emit, trace_id, checkpoint
         ("debate_start", debate_start_node), ("prosecutor", prosecutor_node),
         ("defender", defender_node), ("judge", judge_node),
         ("next_round", next_round_node), ("escalate", escalate_node),
-        ("debate_end", debate_end_node), ("finalize", finalize_node),
+        ("debate_end", debate_end_node), ("review", review_node), ("finalize", finalize_node),
     ]:
         builder.add_node(name, fn)
 
@@ -259,9 +288,36 @@ def build_pipeline_graph(settings, client, retriever, emit, trace_id, checkpoint
     )
     builder.add_edge("next_round", "prosecutor")  # 成环：多轮辩论
     builder.add_edge("escalate", "debate_end")
-    builder.add_edge("debate_end", "finalize")
+    builder.add_edge("debate_end", "review")
+    builder.add_edge("review", "finalize")
     builder.add_edge("finalize", END)
     return builder.compile(checkpointer=checkpointer)
+
+
+@asynccontextmanager
+async def _saver(settings):
+    # 懒加载：默认档不依赖 sqlite saver。state 携带 nx.Graph/dataclass/pydantic，msgpack 无法
+    # 直接编码，故 pickle_fallback；仅作用于本地自有检查点文件（可信 artifact），不接外部输入。
+    from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+    from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+
+    Path(settings.checkpoint_path).parent.mkdir(parents=True, exist_ok=True)
+    async with AsyncSqliteSaver.from_conn_string(settings.checkpoint_path) as saver:
+        saver.serde = JsonPlusSerializer(pickle_fallback=True)
+        await saver.setup()
+        yield saver
+
+
+def _pending_review(final: dict, trace_id: str) -> dict | None:
+    if "__interrupt__" not in final:
+        return None
+    interrupts = final["__interrupt__"]
+    payload = interrupts[0].value if interrupts else {}
+    v = final.get("verdict") or {}
+    return {
+        "pending_review": True, "review": payload, "trace_id": trace_id,
+        "verdict": v.get("verdict"), "confidence": v.get("confidence"), "reason": v.get("reason"),
+    }
 
 
 async def run_graph_pipeline(
@@ -272,17 +328,9 @@ async def run_graph_pipeline(
         "results": [], "adj_results": [], "trace": [],
     }
     config = {"configurable": {"thread_id": trace_id}}
-    if settings.enable_checkpoint:
-        # 懒加载：默认档不依赖 sqlite saver；检查点按 thread_id 持久化，崩溃/中断后同 thread_id 续跑
-        from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
-        from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-
-        Path(settings.checkpoint_path).parent.mkdir(parents=True, exist_ok=True)
-        async with AsyncSqliteSaver.from_conn_string(settings.checkpoint_path) as saver:
-            # state 携带 nx.Graph / dataclass / pydantic，msgpack 无法直接编码；
-            # pickle_fallback 仅用于本地自有检查点文件（可信 artifact），不接外部输入
-            saver.serde = JsonPlusSerializer(pickle_fallback=True)
-            await saver.setup()
+    # HITL 的 interrupt 依赖检查点持久化，故 enable_hitl 隐含启用 saver
+    if settings.enable_checkpoint or settings.enable_hitl:
+        async with _saver(settings) as saver:
             app = build_pipeline_graph(
                 settings, client, retriever, emit, trace_id, checkpointer=saver
             )
@@ -292,4 +340,22 @@ async def run_graph_pipeline(
     else:
         app = build_pipeline_graph(settings, client, retriever, emit, trace_id)
         final = await app.ainvoke(initial, config)
+    pending = _pending_review(final, trace_id)
+    if pending is not None:
+        return pending
+    return final["result"]
+
+
+async def run_graph_resume(
+    text: str, image_path: str | None, emit, *, settings, client, retriever, trace_id: str,
+    decision: dict,
+) -> dict:
+    """HITL 恢复：把人工裁决作为 interrupt 的返回注入 review 节点，继续到 finalize。"""
+    config = {"configurable": {"thread_id": trace_id}}
+    # 空 dict 会被 LangGraph 判为「中断ID→值」空映射（空键 all() 为真），不注入恢复值而再次
+    # interrupt；维持原判改用显式标记，review 节点对无 override 键的 dict 一律保持原裁决
+    resume_val = decision if decision else {"approve": True}
+    async with _saver(settings) as saver:
+        app = build_pipeline_graph(settings, client, retriever, emit, trace_id, checkpointer=saver)
+        final = await app.ainvoke(Command(resume=resume_val), config)
     return final["result"]

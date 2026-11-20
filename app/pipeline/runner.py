@@ -81,6 +81,7 @@ def _build_result(
         "prosecutor": verdict["prosecutor"],
         "defender": verdict["defender"],
         "escalated": verdict.get("escalated", False),
+        "human_review": verdict.get("human_review", False),
         "judge_model": verdict.get("judge_model", ""),
         "usage": _usage(all_results),
         "trace_id": trace_id,

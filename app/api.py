@@ -5,7 +5,7 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Body, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app import obs
@@ -27,6 +27,8 @@ class Task:
     result: dict | None = None
     notify: asyncio.Event = field(default_factory=asyncio.Event)
     finished: bool = False
+    resume_event: asyncio.Event = field(default_factory=asyncio.Event)
+    resume_decision: dict | None = None
 
 
 _tasks: dict[str, Task] = {}
@@ -40,11 +42,36 @@ def _make_emit(task: Task):
     return emit
 
 
+async def _resume_graph(task: Task, trace_id: str, decision: dict, emit) -> dict:
+    from app.llm.client import LLMClient
+    from app.pipeline.graph_runner import run_graph_resume
+    from app.pipeline.runner import _default_retriever
+
+    settings = get_settings()
+    client = LLMClient(settings)
+    return await run_graph_resume(
+        task.text, task.image_path, emit, settings=settings, client=client,
+        retriever=_default_retriever(settings), trace_id=trace_id, decision=decision,
+    )
+
+
 async def _run(task: Task) -> None:
     emit = _make_emit(task)
     started = time.perf_counter()
     try:
-        task.result = await run_pipeline(task.text, task.image_path, emit)
+        result = await run_pipeline(task.text, task.image_path, emit)
+        if result.get("pending_review"):
+            # HITL：暂停等人工复核，SSE 保持打开；resume 端点注入人工裁决后继续
+            task.status = "review"
+            task.result = result
+            obs.log.info(
+                "verify pending review",
+                extra={"task_id": task.id, "verdict": result.get("verdict"), "confidence": result.get("confidence")},
+            )
+            await emit("review", result)
+            await task.resume_event.wait()
+            result = await _resume_graph(task, result["trace_id"], task.resume_decision or {}, emit)
+        task.result = result
         task.status = "done"
         elapsed = time.perf_counter() - started
         obs.record_verify(
@@ -58,6 +85,7 @@ async def _run(task: Task) -> None:
                 "task_id": task.id,
                 "verdict": task.result.get("verdict"),
                 "confidence": task.result.get("confidence"),
+                "human_review": bool(task.result.get("human_review", False)),
                 "latency_s": round(elapsed, 3),
                 "total_tokens": (task.result.get("usage") or {}).get("total_tokens", 0),
             },
@@ -98,6 +126,20 @@ async def get_task(task_id: str):
     if task is None:
         raise HTTPException(status_code=404, detail="task not found")
     return {"id": task.id, "status": task.status, "result": task.result, "events": task.events}
+
+
+@router.post("/verify/{task_id}/resume")
+async def resume_task(task_id: str, decision: dict = Body(default={})):
+    """HITL 人工复核：注入人工裁决（空 dict=维持原判）恢复被 interrupt 暂停的流水线。"""
+    task = _tasks.get(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="task not found")
+    if task.status != "review":
+        raise HTTPException(status_code=409, detail="task 不在待复核状态")
+    task.resume_decision = decision or {}
+    task.resume_event.set()
+    obs.log.info("verify review resumed", extra={"task_id": task_id, "decision": task.resume_decision})
+    return {"status": "resuming"}
 
 
 @router.get("/verify/{task_id}/events")

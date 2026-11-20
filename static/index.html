@@ -38,6 +38,8 @@
   .claimline { font-size: 12px; color: #8b93a7; margin: 3px 0; }
   .img-preview { max-height: 120px; border-radius: 8px; border: 1px solid #2a3348; margin-top: 10px; display: none; }
   .route { font-size: 12px; color: #f59e0b; margin-top: 4px; }
+  select, input[type=number] { background: #171e2e; color: #e6e9f0; border: 1px solid #2a3348; border-radius: 6px; padding: 8px; font-size: 13px; }
+  .review-note { font-size: 12px; color: #f59e0b; margin: 6px 0; }
   .graphbox { margin-top: 14px; padding: 12px; background: #131a29; border: 1px solid #2a3348; border-radius: 8px; }
   .graphbox h3 { margin: 0 0 8px; font-size: 14px; }
   #cy { height: 300px; background: #0f1420; border-radius: 6px; }
@@ -60,6 +62,7 @@
   </form>
   <img id="preview" class="img-preview" alt="图像预览">
   <div class="timeline" id="timeline"></div>
+  <div class="result" id="review"></div>
   <div class="result" id="result"></div>
 </div>
 <script src="/vendor/cytoscape.min.js"></script>
@@ -74,6 +77,7 @@ const STAGES = [
 const form = document.getElementById("form");
 const timeline = document.getElementById("timeline");
 const resultBox = document.getElementById("result");
+const reviewBox = document.getElementById("review");
 const submitBtn = document.getElementById("submit");
 
 const CONSISTENCY_LABELS = { consistent: "图文一致", inconsistent: "图文矛盾", uncertain: "无法判断" };
@@ -168,7 +172,64 @@ function renderGraph(elements) {
   return box;
 }
 
+function showReview(taskId, p) {
+  reviewBox.replaceChildren();
+  const h = document.createElement("div");
+  h.className = "verdict";
+  h.textContent = "待人工复核（HITL）";
+  const meta = document.createElement("div");
+  meta.className = "sub";
+  meta.style.margin = "6px 0 4px";
+  const conf = p.confidence == null ? "—" : Number(p.confidence).toFixed(2);
+  meta.textContent = `模型初判：${p.verdict || ""}（置信度 ${conf}）· ${p.reason || ""}`;
+  const note = document.createElement("div");
+  note.className = "review-note";
+  note.textContent = "证据不足或低置信，已暂停等待人工裁决；提交后流水线继续。";
+  reviewBox.append(h, meta, note);
+  for (const c of p.claims || []) {
+    const d = document.createElement("div");
+    d.className = "claimline";
+    d.textContent = c;
+    reviewBox.append(d);
+  }
+  const row = document.createElement("div");
+  row.className = "row";
+  const sel = document.createElement("select");
+  for (const v of ["supported", "refuted", "misleading", "unverifiable"]) {
+    const o = document.createElement("option");
+    o.value = v; o.textContent = v;
+    if (v === p.verdict) o.selected = true;
+    sel.append(o);
+  }
+  const confIn = document.createElement("input");
+  confIn.type = "number"; confIn.step = "0.05"; confIn.min = "0"; confIn.max = "1";
+  confIn.style.width = "90px"; confIn.placeholder = "置信度";
+  confIn.value = p.confidence == null ? "" : p.confidence;
+  const keep = document.createElement("button");
+  keep.textContent = "维持原判";
+  const override = document.createElement("button");
+  override.textContent = "提交人工裁决";
+  row.append(sel, confIn, keep, override);
+  reviewBox.append(row);
+  const send = async (decision) => {
+    keep.disabled = override.disabled = true;
+    note.textContent = "已提交人工裁决，流水线恢复中…";
+    await fetch(`/api/verify/${taskId}/resume`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(decision),
+    });
+  };
+  keep.onclick = () => send({});
+  override.onclick = () => send({
+    verdict: sel.value,
+    confidence: confIn.value === "" ? null : Number(confIn.value),
+    reason: "人工复核裁决",
+  });
+  reviewBox.style.display = "block";
+}
+
 function showResult(title, payload) {
+  reviewBox.style.display = "none";
   resultBox.replaceChildren();
   const v = document.createElement("div");
   v.className = "verdict";
@@ -218,6 +279,7 @@ form.addEventListener("submit", async (e) => {
   e.preventDefault();
   submitBtn.disabled = true;
   resultBox.style.display = "none";
+  reviewBox.style.display = "none";
   timeline.style.display = "block";
   timeline.replaceChildren();
   for (const [id, label] of STAGES) {
@@ -244,6 +306,9 @@ form.addEventListener("submit", async (e) => {
       el.classList.remove("running", "done");
       el.classList.add(d.status);
       if (d.detail) el.querySelector(".detail").textContent = JSON.stringify(d.detail);
+    });
+    es.addEventListener("review", (ev) => {
+      showReview(task_id, JSON.parse(ev.data));
     });
     es.addEventListener("result", (ev) => {
       const d = JSON.parse(ev.data);

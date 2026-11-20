@@ -322,3 +322,88 @@ async def test_checkpoint_resume_skips_completed_nodes(tmp_path, monkeypatch):
     assert res["verdict"] == "refuted"
     # 续跑只补崩溃的 judge，decompose/prosecutor/defender 不重算
     assert calls[len(first):] == ["judge"]
+
+
+async def test_hitl_interrupt_then_resume_override(tmp_path, monkeypatch):
+    from app.pipeline.graph_runner import run_graph_resume
+
+    def judge_fn(override, usage):
+        return LLMResult(content=_LOW, model="m", usage=usage)
+
+    settings, client, _ = _debate_setup(
+        tmp_path, monkeypatch, judge_fn, enable_escalation=False,
+        enable_hitl=True, checkpoint_path=str(tmp_path / "hitl.sqlite"),
+    )
+
+    async def emit(event, data):
+        pass
+
+    pending = await run_pipeline(
+        "帖子", None, emit, settings=settings, client=client,
+        retriever=FakeRetriever([]), trace_id="hitl1",
+    )
+    assert pending["pending_review"] is True
+    assert pending["review"]["verdict"] == "unverifiable"
+    assert pending["verdict"] == "unverifiable"
+
+    final = await run_graph_resume(
+        "帖子", None, emit, settings=settings, client=client,
+        retriever=FakeRetriever([]), trace_id="hitl1",
+        decision={"verdict": "refuted", "confidence": 0.95, "reason": "人工复核"},
+    )
+    assert final["verdict"] == "refuted"
+    assert final["confidence"] == 0.95
+    assert final["human_review"] is True
+
+
+async def test_hitl_resume_approve_keeps_verdict(tmp_path, monkeypatch):
+    from app.pipeline.graph_runner import run_graph_resume
+
+    def judge_fn(override, usage):
+        return LLMResult(content=_LOW, model="m", usage=usage)
+
+    settings, client, _ = _debate_setup(
+        tmp_path, monkeypatch, judge_fn, enable_escalation=False,
+        enable_hitl=True, checkpoint_path=str(tmp_path / "hitl.sqlite"),
+    )
+
+    async def emit(event, data):
+        pass
+
+    pending = await run_pipeline(
+        "帖子", None, emit, settings=settings, client=client,
+        retriever=FakeRetriever([]), trace_id="hitl2",
+    )
+    assert pending["pending_review"] is True
+    final = await run_graph_resume(
+        "帖子", None, emit, settings=settings, client=client,
+        retriever=FakeRetriever([]), trace_id="hitl2", decision={},
+    )
+    assert final["verdict"] == "unverifiable"  # 维持原判
+    assert final["human_review"] is True
+
+
+async def test_hitl_off_no_interrupt(tmp_path, monkeypatch):
+    def judge_fn(override, usage):
+        return LLMResult(content=_LOW, model="m", usage=usage)
+
+    settings, client, _ = _debate_setup(
+        tmp_path, monkeypatch, judge_fn, enable_escalation=False, enable_hitl=False,
+    )
+    res, _ = await _invoke(settings, client, "hitl3")
+    assert not res.get("pending_review")
+    assert res["human_review"] is False
+
+
+async def test_hitl_high_conf_no_interrupt(tmp_path, monkeypatch):
+    def judge_fn(override, usage):
+        return LLMResult(content=_HIGH, model="m", usage=usage)
+
+    settings, client, _ = _debate_setup(
+        tmp_path, monkeypatch, judge_fn, enable_escalation=False,
+        enable_hitl=True, checkpoint_path=str(tmp_path / "hitl.sqlite"),
+    )
+    res, _ = await _invoke(settings, client, "hitl4")
+    assert not res.get("pending_review")
+    assert res["human_review"] is False
+    assert res["verdict"] == "refuted"

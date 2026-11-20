@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import httpx
@@ -130,3 +131,21 @@ async def test_calibration_missing(client, tmp_path, monkeypatch):
     res = await client.get("/api/calibration")
     assert res.status_code == 200
     assert res.json() == {"calibrator": None, "reliability": None}
+
+
+async def test_resume_unknown_task_404(client):
+    res = await client.post("/api/verify/nonexistent/resume", json={})
+    assert res.status_code == 404
+
+
+async def test_resume_not_in_review_409(client):
+    res = await client.post("/api/verify", data={"text": "测试"})
+    task_id = res.json()["task_id"]
+    # 等 fake pipeline 完成（非 review 状态）
+    for _ in range(50):
+        st = (await client.get(f"/api/verify/{task_id}")).json()["status"]
+        if st == "done":
+            break
+        await asyncio.sleep(0.02)
+    res = await client.post(f"/api/verify/{task_id}/resume", json={})
+    assert res.status_code == 409
