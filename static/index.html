@@ -35,6 +35,7 @@
   .badge.consistent { background: #14532d; color: #86efac; }
   .badge.inconsistent { background: #7f1d1d; color: #fca5a5; }
   .badge.uncertain { background: #334155; color: #cbd5e1; }
+  .badge.degraded { background: #78350f; color: #fcd34d; }
   .claimline { font-size: 12px; color: #8b93a7; margin: 3px 0; }
   .img-preview { max-height: 120px; border-radius: 8px; border: 1px solid #2a3348; margin-top: 10px; display: none; }
   .route { font-size: 12px; color: #f59e0b; margin-top: 4px; }
@@ -126,6 +127,13 @@ function renderForensics(fr) {
   badge.className = `badge ${fr.overall || "uncertain"}`;
   badge.textContent = CONSISTENCY_LABELS[fr.overall] || fr.overall || "无法判断";
   h.append(badge);
+  // 降级（限流/熔断）必须显式标红：降级≠通过，不能被当成"无矛盾"
+  if (/降级|限流|不可用/.test(fr.notes || "")) {
+    const db = document.createElement("span");
+    db.className = "badge degraded";
+    db.textContent = "取证降级";
+    h.append(db);
+  }
   box.append(h);
   const addField = (label, value) => {
     if (!value) return;

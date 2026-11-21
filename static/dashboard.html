@@ -54,6 +54,10 @@
   <h2>消融对比</h2>
   <div class="sub">来自 out/ 下各次评测汇总（eval_*.json）。accuracy 分母含弃权，与 baseline 同口径。</div>
   <div class="panel" id="ablation"></div>
+
+  <h2>限流与降级（本次进程）</h2>
+  <div class="sub">来自 /metrics：免费档 429 按模型计数、备胎切换与熔断次数（进程内累计，重启清零）。</div>
+  <div class="panel" id="ratelimits"></div>
 </div>
 <script>
 const NS = "http://www.w3.org/2000/svg";
@@ -238,8 +242,81 @@ function renderAblation(box, evals) {
   box.appendChild(leg);
 }
 
+function parseMetrics(text) {
+  const out = [];
+  for (const line of String(text).split("\n")) {
+    const m = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\{([^}]*)\}\s+([0-9.eE+-]+)$/);
+    if (!m) continue;
+    const labels = {};
+    for (const lm of m[2].matchAll(/([a-zA-Z_][a-zA-Z0-9_]*)="([^"]*)"/g)) labels[lm[1]] = lm[2];
+    out.push({ name: m[1], labels, value: Number(m[3]) });
+  }
+  return out;
+}
+
+function renderRateLimits(box, series) {
+  box.replaceChildren();
+  const rel = series.filter((s) => s.name === "llm_rate_limited_total");
+  const fb = series.filter((s) => s.name === "llm_fallbacks_total");
+  const cb = series.filter((s) => s.name === "llm_circuit_open_total");
+  if (!rel.length && !fb.length && !cb.length) {
+    const e = document.createElement("div");
+    e.className = "empty";
+    e.textContent = "本次进程尚无限流记录（计数器仅在进程内累计，重启清零）。";
+    box.appendChild(e);
+    return;
+  }
+  const sum = (arr) => arr.reduce((a, s) => a + s.value, 0);
+  const cards = document.createElement("div");
+  cards.className = "cards";
+  const card = (k, v, cls) => {
+    const c = document.createElement("div");
+    c.className = "card";
+    const kk = document.createElement("div");
+    kk.className = "k"; kk.textContent = k;
+    const vv = document.createElement("div");
+    vv.className = "v" + (cls ? " " + cls : ""); vv.textContent = v;
+    c.append(kk, vv);
+    return c;
+  };
+  const n429 = sum(rel);
+  cards.append(card("429 次数", n429, n429 ? "warn" : "good"));
+  cards.append(card("熔断次数", sum(cb), sum(cb) ? "bad" : "good"));
+  cards.append(card("备胎切换", sum(fb)));
+  box.appendChild(cards);
+
+  const rows = [
+    ...rel.map((s) => ["限流 429", s.labels.role || "", s.labels.model || "", s.value]),
+    ...fb.map((s) => ["备胎切换", s.labels.role || "", `${s.labels.from_model || ""} → ${s.labels.to_model || ""}`, s.value]),
+    ...cb.map((s) => ["熔断", s.labels.role || "", s.labels.model || "", s.value]),
+  ].sort((a, b) => b[3] - a[3]);
+  const table = document.createElement("table");
+  const thead = document.createElement("thead");
+  const htr = document.createElement("tr");
+  for (const h of ["类型", "角色", "模型", "次数"]) {
+    const th = document.createElement("th");
+    th.textContent = h;
+    htr.appendChild(th);
+  }
+  thead.appendChild(htr);
+  table.appendChild(thead);
+  const tbody = document.createElement("tbody");
+  for (const r of rows) {
+    const tr = document.createElement("tr");
+    r.forEach((cell, i) => {
+      const td = document.createElement("td");
+      if (i === 1 || i === 2) td.className = "name";
+      td.textContent = cell;
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  box.appendChild(table);
+}
+
 async function load() {
-  let cal = { calibrator: null, reliability: null }, evals = [];
+  let cal = { calibrator: null, reliability: null }, evals = [], series = [];
   try {
     const r = await fetch("/api/calibration");
     if (r.ok) cal = await r.json();
@@ -248,10 +325,15 @@ async function load() {
     const r = await fetch("/api/evals");
     if (r.ok) evals = (await r.json()).evals || [];
   } catch (e) {}
+  try {
+    const r = await fetch("/metrics");
+    if (r.ok) series = parseMetrics(await r.text());
+  } catch (e) {}
   renderSummary(document.getElementById("cal-summary"), cal.reliability, cal.calibrator);
   renderReliability(document.getElementById("reliability"), cal.reliability);
   renderHistogram(document.getElementById("histogram"), cal.reliability);
   renderAblation(document.getElementById("ablation"), evals);
+  renderRateLimits(document.getElementById("ratelimits"), series);
 }
 load();
 </script>

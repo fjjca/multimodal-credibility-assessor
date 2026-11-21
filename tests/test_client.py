@@ -1,10 +1,17 @@
 import httpx
 import pytest
-from openai import APIConnectionError
+from openai import APIConnectionError, RateLimitError
 
+from app import obs
 from app.config import Settings
 from app.llm.cache import ReplayMissError
-from app.llm.client import EmptyResponseError, LLMClient
+from app.llm.client import CircuitOpenError, EmptyResponseError, LLMClient
+
+
+def _rate_limit(retry_after: str | None = None):
+    headers = {"retry-after": retry_after} if retry_after else {}
+    resp = httpx.Response(429, request=httpx.Request("POST", "http://test"), headers=headers)
+    return RateLimitError("429 rate limited", response=resp, body=None)
 
 
 def make_client(tmp_path, **overrides) -> LLMClient:
@@ -120,3 +127,128 @@ async def test_call_once_detects_empty_content(tmp_path, monkeypatch):
     monkeypatch.setattr(client, "_provider_client", lambda provider: FakeProvider())
     with pytest.raises(EmptyResponseError):
         await client.chat("judge", [{"role": "user", "content": "x"}])
+
+async def test_fallback_chain_switches_model_on_rate_limit(tmp_path, monkeypatch):
+    client = make_client(
+        tmp_path,
+        llm_max_retries=0,
+        llm_role_fallbacks={"decompose": ["siliconflow:Qwen/Qwen3-8B"]},
+    )
+    calls = []
+
+    async def fake_call_once(provider, model, messages, params):
+        calls.append(f"{provider}:{model}")
+        if provider == "zhipu":
+            raise _rate_limit()
+        return "ok", {"total_tokens": 3}
+
+    monkeypatch.setattr(client, "_call_once", fake_call_once)
+    r = await client.chat("decompose", [{"role": "user", "content": "hi"}])
+    assert r.content == "ok"
+    assert calls == ["zhipu:glm-4-flash", "siliconflow:Qwen/Qwen3-8B"]
+    # 兜底切换必须可观测（dashboard 的"限流与降级"面板依赖这两个计数器）
+    assert obs.LLM_RATE_LIMITED.labels(role="decompose", model="zhipu:glm-4-flash")._value.get() >= 1
+    assert obs.LLM_FALLBACKS.labels(
+        role="decompose",
+        from_model="zhipu:glm-4-flash",
+        to_model="siliconflow:Qwen/Qwen3-8B",
+    )._value.get() >= 1
+
+
+async def test_circuit_breaker_skips_model_after_repeated_429(tmp_path, monkeypatch):
+    client = make_client(tmp_path, llm_max_retries=0, llm_circuit_threshold=2)
+    calls = []
+
+    async def fake_call_once(provider, model, messages, params):
+        calls.append(model)
+        raise _rate_limit()
+
+    monkeypatch.setattr(client, "_call_once", fake_call_once)
+    msgs = [{"role": "user", "content": "hi"}]
+    with pytest.raises(RateLimitError):
+        await client.chat("judge", msgs)
+    with pytest.raises(RateLimitError):
+        await client.chat("judge", msgs)   # 第二次达到阈值，熔断打开
+    with pytest.raises(CircuitOpenError):
+        await client.chat("judge", msgs)   # 冷却期内直接跳过，不再打 API
+    assert len(calls) == 2
+    assert obs.LLM_CIRCUIT_OPEN.labels(role="judge", model="zhipu:glm-4.7-flash")._value.get() >= 1
+
+
+async def test_retry_budget_per_role(tmp_path, monkeypatch):
+    client = make_client(tmp_path, llm_retry_budgets={"judge": 1}, llm_max_retries=5)
+    attempts = []
+
+    async def fake_call_once(provider, model, messages, params):
+        attempts.append(1)
+        raise _rate_limit()
+
+    async def no_sleep(_seconds):
+        pass
+
+    monkeypatch.setattr(client, "_call_once", fake_call_once)
+    monkeypatch.setattr("app.llm.client.asyncio.sleep", no_sleep)
+    with pytest.raises(RateLimitError):
+        await client.chat("judge", [{"role": "user", "content": "x"}])
+    assert len(attempts) == 2      # budget=1 → 总共 2 次尝试
+
+
+async def test_rate_limit_backoff_capped(tmp_path, monkeypatch):
+    client = make_client(
+        tmp_path,
+        llm_max_retries=1,
+        llm_min_interval_seconds=0.0,
+        llm_rate_limit_backoff_seconds=15.0,
+        llm_rate_limit_backoff_max_seconds=20.0,
+    )
+    sleeps = []
+
+    async def fake_call_once(provider, model, messages, params):
+        raise _rate_limit(retry_after="600")
+
+    async def record_sleep(seconds):
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(client, "_call_once", fake_call_once)
+    monkeypatch.setattr("app.llm.client.asyncio.sleep", record_sleep)
+    with pytest.raises(RateLimitError):
+        await client.chat("judge", [{"role": "user", "content": "x"}])
+    assert sleeps and max(sleeps) <= 20.5   # retry-after=600 也被上限截断
+
+
+def test_role_chain_skips_invalid_fallbacks():
+    s = Settings(
+        _env_file=None,
+        llm_role_fallbacks={
+            "decompose": ["", "badprovider:x", "zhipu:glm-4.7-flashx", "zhipu:glm-4-flash"],
+        },
+    )
+    assert s.role_chain("decompose") == ["zhipu:glm-4-flash", "zhipu:glm-4.7-flashx"]
+
+
+def test_settings_parses_fallbacks_from_env(monkeypatch):
+    monkeypatch.setenv(
+        "LLM_ROLE_FALLBACKS", '{"forensics":["siliconflow:PaddlePaddle/PaddleOCR-VL-1.5"]}'
+    )
+    s = Settings(_env_file=None)
+    assert s.role_chain("forensics") == [
+        "zhipu:glm-4.6v-flash",
+        "siliconflow:PaddlePaddle/PaddleOCR-VL-1.5",
+    ]
+
+
+def test_override_chain_dedupes_and_never_falls_back_to_primary():
+    client = LLMClient(
+        Settings(
+            _env_file=None,
+            llm_role_fallbacks={"judge": ["zhipu:glm-4.5-flash", "siliconflow:Qwen/Qwen3-8B"]},
+        )
+    )
+    # 强裁判与 judge 的备胎是同一个模型：不应重复尝试
+    assert client._candidates("judge", "zhipu:glm-4.5-flash") == [
+        "zhipu:glm-4.5-flash",
+        "siliconflow:Qwen/Qwen3-8B",
+    ]
+    # 升级不得退回主模型
+    assert client._candidates("judge", "zhipu:glm-4.9-flash")[0] == "zhipu:glm-4.9-flash"
+    assert "zhipu:glm-4.7-flash" not in client._candidates("judge", "zhipu:glm-4.9-flash")

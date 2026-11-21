@@ -78,6 +78,7 @@ cp .env.example .env                             # 填入 key
 - `ENABLE_CALIBRATION`（默认 false）/ `CALIBRATOR_PATH`（默认 `.data/calibrator.json`）：事后置信度校准开关与 artifact 路径，详见[校准小节](#置信度校准与评测-dashboard)。
 - `JUDGE_CONFIDENCE_THRESHOLD`（默认 0.6）：低于此值升级强裁判；HITL 开启时也是触发人工复核的阈值。
 - `LLM_CACHE_MODE`：`off` / `readwrite`（默认） / `replay`（无 key 时回放已录制响应）。
+- `LLM_ROLE_FALLBACKS` / `LLM_CIRCUIT_THRESHOLD` / `LLM_RETRY_BUDGETS`：限流止血三件套（重试预算、熔断、兜底候选链），详见[限流止血小节](#限流止血重试预算--熔断--兜底候选链)。
 - 换模型 / 升级付费裁判：只改 `MODEL_*` 一行，不改代码。
 
 ## 评测
@@ -153,10 +154,54 @@ curl http://localhost:8000/metrics      # Prometheus 文本 exposition，可直�
 | `verify_errors_total` | Counter | — | 失败次数 |
 | `verdicts_total` | Counter | verdict | 结论分布（supported/refuted/…） |
 | `escalations_total` | Counter | — | 低置信度升级强裁判次数 |
+| `llm_rate_limited_total` | Counter | role / model | 429 次数 |
+| `llm_fallbacks_total` | Counter | role / from_model / to_model | 兜底候选切换次数 |
+| `llm_circuit_open_total` | Counter | role / model | 熔断触发次数 |
 
 结构化日志走应用 logger（`credibility`），经根 JSON handler 输出到 stdout，事件含 `verify accepted/done/failed`、`stage done`、`llm retry`，字段如 `task_id / verdict / confidence / latency_s / total_tokens / stage / attempt / error`。容器里即 `docker logs` 可采的 JSON 行。
 
 > 埋点分层：LLM / 阶段指标在客户端与 runner 内部（评测与 serving 共用）；`verify_*` / `verdicts` / `escalations` 只在 `api._run`，评测跑批不污染 serving 计数。token 只计实时调用，与"成本敏感"口径一致。评测入口 `scripts.evaluate` 同样调用 `setup_logging`，跑批输出结构化 JSON 日志（含 `llm retry` 的 `error/delay_s`，便于诊断免费档限流）。
+
+## 限流止血：重试预算 / 熔断 / 兜底候选链
+
+免费档最常见的故障是 `429 Too Many Requests`（账户级配额，非瞬时抖动）。旧行为是"同一模型 6 次重试 × 120s 退避"，一次限流就把整条流水线拖死几分钟，还把所有请求都打在同一个已冷却的模型上。本节是四层止血 + 一层诊断。
+
+| 层 | 机制 | 配置 | 效果 |
+|---|---|---|---|
+| L1 | **按角色重试预算** | `LLM_MAX_RETRIES`（默认 3）、`LLM_RETRY_BUDGETS`（按角色覆盖） | 视觉档/裁判档限流多，单独调小，不拖全局 |
+| L1 | **退避封顶** | `LLM_RATE_LIMIT_BACKOFF_SECONDS`（起步 15s）、`LLM_RATE_LIMIT_BACKOFF_MAX_SECONDS`（上限 60s） | 指数增长与 `Retry-After` 都封顶，单次调用不会卡几分钟 |
+| L2 | **按模型熔断** | `LLM_CIRCUIT_THRESHOLD`（连续 3 次 429 触发）、`LLM_CIRCUIT_COOLDOWN_SECONDS`（300s） | 熔断期内直接跳过该模型，不再浪费调用；冷却结束自动复位重试 |
+| L3 | **兜底候选链** | `LLM_ROLE_FALLBACKS`（按角色的 `provider:model` 数组） | 主模型限流时切备胎，**跨平台**（SiliconFlow）配额池独立，互不拖累 |
+| L4 | **取证降级 + 体检脚本 + 观测** | `scripts/probe_models`、dashboard 面板、`/metrics` 计数器 | VLM 不可用时降级为"图文一致性未评估"并继续出结论，而不是整条流水线崩掉 |
+
+- **降级语义**：取证阶段遇 429/熔断，返回 `overall=uncertain` 的取证结果并继续跑（文本核查照常出结论）。前端"取证面板"会显式标注降级原因——**降级不等于通过**，不会静默伪装成"无矛盾"。
+- **兜底链不退回主模型**：显式指定 `model_override` 时只用备胎、不回退主模型，避免把重试打在已冷却的主模型上。
+- **跨平台兜底**：`LLM_ROLE_FALLBACKS={"forensics":["siliconflow:PaddlePaddle/PaddleOCR-VL-1.5"],"judge":["siliconflow:THUDM/GLM-4-9B-0414"]}`。SiliconFlow 免费档需要自己在 `.env` 填 `SILICONFLOW_API_KEY`（不同平台配额池独立，才是真兜底而非同池互搏）。
+- **体检脚本**（每个模型只打一次，输出 `out/model_probe.json`）：
+
+  ```bash
+  .venv/Scripts/python -m scripts.probe_models
+  ```
+
+  输出每个候选模型的 `ok / rate_limited / error_NNN`，据此决定谁是主、谁是备胎——不要靠猜。
+
+- **观测**：新增 `llm_rate_limited_total`（role/model）、`llm_fallbacks_total`（role/from_model/to_model）、`llm_circuit_open_total`（role/model）三个计数器，`/dashboard.html` 的"限流与降级（本次进程）"面板直接展示 429 / 熔断 / 备胎切换次数与明细表。
+- **诚实边界**：兜底切换只在 **429 / 熔断** 时触发；超时、5xx 只在**同一模型内**重试，不切换备胎——超时往往是网络抖动而非配额问题，切模型反而可能掩盖问题。取证阶段还额外覆盖 429（降级继续，见上）。
+
+### 体检实测（2026-11-21，免费档，逐模型单次调用）
+
+| 角色 | 模型 | 结果 |
+|---|---|---|
+| decompose / prosecutor / defender | `zhipu:glm-4-flash` | ✅ ok（~1.0s） |
+| forensics | `zhipu:glm-4.6v-flash` | ❌ 429 配额受限 |
+| judge | `zhipu:glm-4.7-flash` | ❌ 429 配额受限 |
+| judge_strong（升级目标） | `zhipu:glm-4.5-flash` | ✅ ok（~0.9s） |
+
+结论与实配置：**限流不是"全部挂了"，而是集中在 VLM 档（`glm-4.6v-flash`）与裁判档（`glm-4.7-flash`）**——两者恰好是链路上最关键的两个模型。
+
+- 据此把 `glm-4.5-flash`（体检可用）配成 judge 的兜底候选：`LLM_ROLE_FALLBACKS={"judge":["zhipu:glm-4.5-flash"]}`，并给视觉/裁判档收紧重试预算（`LLM_RETRY_BUDGETS={"forensics":1,"judge":2}`）——限流时快速失败换人，而不是原地等冷却。
+- **线上验证**：曾因 `glm-4.7-flash` 持续 429 而失败的样本 `s01`，在兜底链生效后跑通，trace 记录 `judge_model=glm-4.5-flash`、裁决正常产出（该次检索 off，故为 `unverifiable` 弃权而非误判）。原本"整条流水线崩掉"变成"换个模型继续跑"。
+- **forensics 仍无免费备胎**：同平台的 VLM 档一起限流，跨平台需 SiliconFlow（`PaddlePaddle/PaddleOCR-VL-1.5`）——填好 `SILICONFLOW_API_KEY` 后加 `LLM_ROLE_FALLBACKS={"forensics":["siliconflow:PaddlePaddle/PaddleOCR-VL-1.5"]}`；在那之前取证走**降级**（`uncertain` + 显式标注，文本核查照常出结论）。
 
 ## 编排：LangGraph（flag 门控，可选）
 
@@ -278,7 +323,7 @@ ENABLE_CALIBRATION=true .venv/Scripts/python -m app
 ## 测试
 
 ```bash
-.venv/Scripts/python -m pytest        # 131 项，覆盖客户端/缓存/各流水线阶段/取证/路由/评测/API/可观测性/LangGraph 编排/循环辩论/检查点续跑/HITL 人工介入/置信度校准
+.venv/Scripts/python -m pytest        # 143 项，覆盖客户端/缓存/重试与熔断/兜底链/模型体检脚本/各流水线阶段/取证/路由/评测/API/可观测性/LangGraph 编排/循环辩论/检查点续跑/HITL 人工介入/置信度校准
 ```
 
 ## 项目结构
@@ -291,7 +336,7 @@ app/
   llm/                 # OpenAI 兼容客户端、退避重试、录制回放缓存
   pipeline/            # decompose / forensics / retrieve / evidence_graph / graph / adjudicate / runner / graph_runner / models
   eval/                # 数据集、harness（断点续跑）、指标、基线/流水线 predictor、calibration（温度缩放/ECE/LOO）
-scripts/               # evaluate / calibrate / make_demo_images / prepare_fakeddit / smoke_llm
+scripts/               # evaluate / calibrate / probe_models（模型配额体检）/ make_demo_images / prepare_fakeddit / smoke_llm
 static/                # 单页前端 + dashboard.html（纯 SVG）+ vendored cytoscape.min.js
 data/                  # 评测数据集与合成图像
 ```
@@ -300,6 +345,6 @@ data/                  # 评测数据集与合成图像
 
 ## 成本与限制
 
-- **成本**：默认全免费三模型分工，预算 ≈ ¥0；升级付费裁判单条约 ¥0.003–0.005。免费档有账户级并发限制，客户端带并发上限 + 指数退避；评测支持断点续跑。
-- **限制**：多模态评测基于小规模合成用例；单图输入；检索依赖 Tavily 免费档质量；裁决质量受免费模型能力约束。
+- **成本**：默认全免费三模型分工，预算 ≈ ¥0；升级付费裁判单条约 ¥0.003–0.005。免费档有账户级并发限制，客户端带并发上限 + 按角色重试预算 + 退避封顶 + 按模型熔断 + 跨平台兜底候选链；评测支持断点续跑。
+- **限制**：多模态评测基于小规模合成用例；单图输入；检索依赖 Tavily 免费档质量；裁决质量受免费模型能力约束；免费档 429 是常态，靠兜底链缓解而非根治（跨平台兜底需自备 SiliconFlow key）。
 - **v2 路线**：反向搜图 / 图片挪用检测、视频与多图、Neo4j + 可信度传播 / 多跳推理、Redis/Celery、OTel/Langfuse 分布式追踪（在现有 Prometheus+JSON 之上）、本地 vLLM、React 前端。

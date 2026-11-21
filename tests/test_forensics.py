@@ -2,7 +2,7 @@ import base64
 
 import httpx
 import pytest
-from openai import BadRequestError
+from openai import BadRequestError, RateLimitError
 
 from app.config import Settings
 from app.llm.client import LLMClient, LLMResult
@@ -25,6 +25,11 @@ PNG_1PX = base64.b64decode(
 def _bad_request_error():
     resp = httpx.Response(400, request=httpx.Request("POST", "http://x"))
     return BadRequestError("content policy", response=resp, body=None)
+
+
+def _rate_limit_error():
+    resp = httpx.Response(429, request=httpx.Request("POST", "http://x"))
+    return RateLimitError("rate limited", response=resp, body=None)
 
 
 def test_normalize_consistency_synonyms():
@@ -180,6 +185,17 @@ async def test_forensics_content_policy_degrades(tmp_path, monkeypatch):
     assert fr is not None
     assert "审核" in fr.notes
     assert fr.overall == "uncertain"
+
+
+async def test_forensics_rate_limit_degrades_without_killing_pipeline(tmp_path, monkeypatch):
+    async def chat_fn(role, messages, **kw):
+        raise _rate_limit_error()
+
+    client = _client(tmp_path, monkeypatch, chat_fn)
+    fr, res = await forensics(client, "data:image/png;base64,abc", "t", [Claim(id="c1", text="a")])
+    assert res is None
+    assert fr is not None and fr.overall == "uncertain" and fr.claims == []
+    assert "限流" in fr.notes
 
 
 async def test_image_evidence_creates_contradict_edge(tmp_path, monkeypatch):

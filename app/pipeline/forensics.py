@@ -4,9 +4,9 @@ import mimetypes
 import re
 from pathlib import Path
 
-from openai import BadRequestError
+from openai import BadRequestError, RateLimitError
 
-from app.llm.client import EmptyResponseError, LLMClient, LLMResult
+from app.llm.client import CircuitOpenError, EmptyResponseError, LLMClient, LLMResult
 from app.pipeline.models import (
     Claim,
     ClaimConsistency,
@@ -155,4 +155,10 @@ async def forensics(
         return ForensicsResult(notes="内容审核拒答，无法取证"), None
     except EmptyResponseError:
         return ForensicsResult(notes="VLM 多次返回空响应，取证降级"), None
+    except (RateLimitError, CircuitOpenError):
+        # 免费档配额/限流：取证不可用，但流水线继续（文本核查照常出结论）
+        return ForensicsResult(
+            notes="VLM 限流或不可用，图文一致性未评估（取证降级，流水线继续）",
+            overall="uncertain",
+        ), None
     return parse_forensics(result.content, claims), result
