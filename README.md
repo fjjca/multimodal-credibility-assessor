@@ -204,6 +204,7 @@ curl http://localhost:8000/metrics      # Prometheus 文本 exposition，可直�
 
 - 据此把 `glm-4.5-flash`（体检可用）配成 judge 的兜底候选：`LLM_ROLE_FALLBACKS={"judge":["zhipu:glm-4.5-flash","siliconflow:zai-org/GLM-4.5-Air"]}`，并给视觉/裁判档收紧重试预算（`LLM_RETRY_BUDGETS={"forensics":1,"judge":1}`）——限流是账户级冷却，原地多等 45s 也等不到额度，不如留一次 15s 重试后立刻换备胎。
 - **线上验证**：曾因 `glm-4.7-flash` 持续 429 而失败的样本 `s01`，在兜底链生效后跑通，trace 记录 `judge_model=glm-4.5-flash`、裁决正常产出（该次检索 off，故为 `unverifiable` 弃权而非误判）。原本"整条流水线崩掉"变成"换个模型继续跑"。
+- **收紧重试预算的实测收益**（同一样本 s01，缓存关闭）：judge 预算 2→1 后，429 只留一次 15s 重试即切备胎，端到端延迟 **128s → 51s**（-60%），裁决结论与 token 消耗基本不变（7661 vs 7647）。限流是账户级冷却，原地多等 45s 等不到额度，纯属浪费。
 - **forensics 已配跨平台备胎**：同平台 VLM 档一起限流，故走 SiliconFlow——填好 `SILICONFLOW_API_KEY` 后用 `LLM_ROLE_FALLBACKS={"forensics":["siliconflow:Qwen/Qwen3-VL-8B-Instruct","siliconflow:PaddlePaddle/PaddleOCR-VL-1.5"]}`；两档都没配时取证走**降级**（`uncertain` + 显式标注，文本核查照常出结论）。
 
 ## 编排：LangGraph（flag 门控，可选）
