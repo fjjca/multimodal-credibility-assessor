@@ -1,6 +1,6 @@
 import httpx
 import pytest
-from openai import APIConnectionError, RateLimitError
+from openai import APIConnectionError, APIStatusError, APITimeoutError, RateLimitError
 
 from app import obs
 from app.config import Settings
@@ -12,6 +12,15 @@ def _rate_limit(retry_after: str | None = None):
     headers = {"retry-after": retry_after} if retry_after else {}
     resp = httpx.Response(429, request=httpx.Request("POST", "http://test"), headers=headers)
     return RateLimitError("429 rate limited", response=resp, body=None)
+
+
+def _timeout():
+    return APITimeoutError(request=httpx.Request("POST", "http://test"))
+
+
+def _status_error(code: int):
+    resp = httpx.Response(code, request=httpx.Request("POST", "http://test"))
+    return APIStatusError(f"http {code}", response=resp, body=None)
 
 
 def make_client(tmp_path, **overrides) -> LLMClient:
@@ -252,3 +261,68 @@ def test_override_chain_dedupes_and_never_falls_back_to_primary():
     # 升级不得退回主模型
     assert client._candidates("judge", "zhipu:glm-4.9-flash")[0] == "zhipu:glm-4.9-flash"
     assert "zhipu:glm-4.7-flash" not in client._candidates("judge", "zhipu:glm-4.9-flash")
+
+
+async def test_fallback_chain_switches_on_timeout(tmp_path, monkeypatch):
+    """重试耗尽的超时也应切备胎——免费档"卡住"和 429 一样致命。"""
+    client = make_client(
+        tmp_path,
+        llm_max_retries=0,
+        llm_role_fallbacks={"judge": ["siliconflow:zai-org/GLM-4.5-Air"]},
+    )
+    calls = []
+
+    async def fake_call_once(provider, model, messages, params):
+        calls.append(f"{provider}:{model}")
+        if provider == "zhipu":
+            raise _timeout()
+        return "ok", {"total_tokens": 3}
+
+    monkeypatch.setattr(client, "_call_once", fake_call_once)
+    r = await client.chat("judge", [{"role": "user", "content": "hi"}])
+    assert r.content == "ok"
+    assert calls == ["zhipu:glm-4.7-flash", "siliconflow:zai-org/GLM-4.5-Air"]
+    assert obs.LLM_FALLBACKS.labels(
+        role="judge",
+        from_model="zhipu:glm-4.7-flash",
+        to_model="siliconflow:zai-org/GLM-4.5-Air",
+    )._value.get() >= 1
+
+
+async def test_fallback_chain_switches_on_server_error(tmp_path, monkeypatch):
+    client = make_client(
+        tmp_path,
+        llm_max_retries=0,
+        llm_role_fallbacks={"judge": ["siliconflow:zai-org/GLM-4.5-Air"]},
+    )
+    calls = []
+
+    async def fake_call_once(provider, model, messages, params):
+        calls.append(f"{provider}:{model}")
+        if provider == "zhipu":
+            raise _status_error(500)
+        return "ok", {"total_tokens": 3}
+
+    monkeypatch.setattr(client, "_call_once", fake_call_once)
+    r = await client.chat("judge", [{"role": "user", "content": "hi"}])
+    assert r.content == "ok"
+    assert calls == ["zhipu:glm-4.7-flash", "siliconflow:zai-org/GLM-4.5-Air"]
+
+
+async def test_no_fallback_on_client_error(tmp_path, monkeypatch):
+    """4xx 是请求本身的问题，换模型同样会失败，不该白烧一次配额。"""
+    client = make_client(
+        tmp_path,
+        llm_max_retries=0,
+        llm_role_fallbacks={"judge": ["siliconflow:zai-org/GLM-4.5-Air"]},
+    )
+    calls = []
+
+    async def fake_call_once(provider, model, messages, params):
+        calls.append(model)
+        raise _status_error(400)
+
+    monkeypatch.setattr(client, "_call_once", fake_call_once)
+    with pytest.raises(APIStatusError):
+        await client.chat("judge", [{"role": "user", "content": "hi"}])
+    assert calls == ["glm-4.7-flash"]

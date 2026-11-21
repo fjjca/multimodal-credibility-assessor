@@ -176,7 +176,7 @@ curl http://localhost:8000/metrics      # Prometheus 文本 exposition，可直�
 
 - **降级语义**：取证阶段遇 429/熔断，返回 `overall=uncertain` 的取证结果并继续跑（文本核查照常出结论）。前端"取证面板"会显式标注降级原因——**降级不等于通过**，不会静默伪装成"无矛盾"。
 - **兜底链不退回主模型**：显式指定 `model_override` 时只用备胎、不回退主模型，避免把重试打在已冷却的主模型上。
-- **跨平台兜底**：`LLM_ROLE_FALLBACKS={"forensics":["siliconflow:PaddlePaddle/PaddleOCR-VL-1.5"],"judge":["siliconflow:THUDM/GLM-4-9B-0414"]}`。SiliconFlow 免费档需要自己在 `.env` 填 `SILICONFLOW_API_KEY`（不同平台配额池独立，才是真兜底而非同池互搏）。
+- **跨平台兜底**（2026-11-21 体检实测可达）：`LLM_ROLE_FALLBACKS={"judge":["zhipu:glm-4.5-flash","siliconflow:zai-org/GLM-4.5-Air"],"forensics":["siliconflow:Qwen/Qwen3-VL-8B-Instruct","siliconflow:PaddlePaddle/PaddleOCR-VL-1.5"]}`。SiliconFlow 需要自己在 `.env` 填 `SILICONFLOW_API_KEY`（不同平台配额池独立，才是真兜底而非同池互搏）。视觉备胎选 `Qwen3-VL-8B-Instruct`（通用 VLM，能按取证 prompt 输出 JSON）而非纯 OCR 型号——纯 OCR 型号回不了 `{ocr_text, claims[]}` 结构。
 - **体检脚本**（每个模型只打一次，输出 `out/model_probe.json`）：
 
   ```bash
@@ -186,7 +186,7 @@ curl http://localhost:8000/metrics      # Prometheus 文本 exposition，可直�
   输出每个候选模型的 `ok / rate_limited / error_NNN`，据此决定谁是主、谁是备胎——不要靠猜。
 
 - **观测**：新增 `llm_rate_limited_total`（role/model）、`llm_fallbacks_total`（role/from_model/to_model）、`llm_circuit_open_total`（role/model）三个计数器，`/dashboard.html` 的"限流与降级（本次进程）"面板直接展示 429 / 熔断 / 备胎切换次数与明细表。
-- **诚实边界**：兜底切换只在 **429 / 熔断** 时触发；超时、5xx 只在**同一模型内**重试，不切换备胎——超时往往是网络抖动而非配额问题，切模型反而可能掩盖问题。取证阶段还额外覆盖 429（降级继续，见上）。
+- **兜底触发条件**：限流/熔断，以及重试耗尽后的**超时 / 连接失败 / 空响应 / 5xx**——免费档"卡住"和 429 一样致命，都该换人。**4xx 不触发**：请求本身有问题（参数错、鉴权失败），换模型同样会失败，只白烧一次配额。取证阶段额外覆盖 429（降级继续，见上）。
 
 ### 体检实测（2026-11-21，免费档，逐模型单次调用）
 
@@ -194,14 +194,17 @@ curl http://localhost:8000/metrics      # Prometheus 文本 exposition，可直�
 |---|---|---|
 | decompose / prosecutor / defender | `zhipu:glm-4-flash` | ✅ ok（~1.0s） |
 | forensics | `zhipu:glm-4.6v-flash` | ❌ 429 配额受限 |
+| forensics 备胎 | `siliconflow:Qwen/Qwen3-VL-8B-Instruct` | ✅ ok（~1.1s） |
+| forensics 备胎 | `siliconflow:PaddlePaddle/PaddleOCR-VL-1.5` | ✅ ok（~0.1s） |
 | judge | `zhipu:glm-4.7-flash` | ❌ 429 配额受限 |
-| judge_strong（升级目标） | `zhipu:glm-4.5-flash` | ✅ ok（~0.9s） |
+| judge 备胎 | `zhipu:glm-4.5-flash` | ✅ ok（~0.9s） |
+| judge 备胎 | `siliconflow:zai-org/GLM-4.5-Air` | ✅ ok（~15s，较慢） |
 
 结论与实配置：**限流不是"全部挂了"，而是集中在 VLM 档（`glm-4.6v-flash`）与裁判档（`glm-4.7-flash`）**——两者恰好是链路上最关键的两个模型。
 
 - 据此把 `glm-4.5-flash`（体检可用）配成 judge 的兜底候选：`LLM_ROLE_FALLBACKS={"judge":["zhipu:glm-4.5-flash"]}`，并给视觉/裁判档收紧重试预算（`LLM_RETRY_BUDGETS={"forensics":1,"judge":2}`）——限流时快速失败换人，而不是原地等冷却。
 - **线上验证**：曾因 `glm-4.7-flash` 持续 429 而失败的样本 `s01`，在兜底链生效后跑通，trace 记录 `judge_model=glm-4.5-flash`、裁决正常产出（该次检索 off，故为 `unverifiable` 弃权而非误判）。原本"整条流水线崩掉"变成"换个模型继续跑"。
-- **forensics 仍无免费备胎**：同平台的 VLM 档一起限流，跨平台需 SiliconFlow（`PaddlePaddle/PaddleOCR-VL-1.5`）——填好 `SILICONFLOW_API_KEY` 后加 `LLM_ROLE_FALLBACKS={"forensics":["siliconflow:PaddlePaddle/PaddleOCR-VL-1.5"]}`；在那之前取证走**降级**（`uncertain` + 显式标注，文本核查照常出结论）。
+- **forensics 已配跨平台备胎**：同平台 VLM 档一起限流，故走 SiliconFlow——填好 `SILICONFLOW_API_KEY` 后用 `LLM_ROLE_FALLBACKS={"forensics":["siliconflow:Qwen/Qwen3-VL-8B-Instruct","siliconflow:PaddlePaddle/PaddleOCR-VL-1.5"]}`；两档都没配时取证走**降级**（`uncertain` + 显式标注，文本核查照常出结论）。
 
 ## 编排：LangGraph（flag 门控，可选）
 

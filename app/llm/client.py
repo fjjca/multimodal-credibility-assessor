@@ -23,6 +23,13 @@ class CircuitOpenError(RuntimeError):
     """模型连续限流已被熔断，本轮直接跳过该候选（交由 fallback 链处理）。"""
 
 
+# 兜底候选链的触发条件：限流/熔断，以及重试耗尽后的超时/连接失败/空响应/5xx。
+# 4xx（请求本身有问题）不触发兜底——换模型同样会失败，只会白白多烧一次配额。
+FALLBACK_TRIGGER = (
+    RateLimitError, CircuitOpenError, APITimeoutError, APIConnectionError, EmptyResponseError,
+)
+
+
 @dataclass
 class _Breaker:
     """单模型的限流熔断状态（进程内）。"""
@@ -97,9 +104,9 @@ class LLMClient:
                     content, usage = await self._call_with_retry(
                         role, provider, model, messages, params
                     )
-                except (RateLimitError, CircuitOpenError) as exc:
+                except (FALLBACK_TRIGGER + (APIStatusError,)) as exc:
                     last_exc = exc
-                    if idx < len(candidates) - 1:
+                    if idx < len(candidates) - 1 and self._fallback_worthy(exc):
                         obs.record_llm_fallback(role, candidate, candidates[idx + 1])
                         obs.log.warning(
                             "llm fallback",
@@ -131,6 +138,15 @@ class LLMClient:
             if cand not in out:
                 out.append(cand)
         return out
+
+    @staticmethod
+    def _fallback_worthy(exc: Exception) -> bool:
+        """该异常是否值得换备胎：429/熔断/超时/连接失败/空响应/5xx 值得，4xx 不值得。"""
+        if isinstance(exc, RateLimitError):
+            return True
+        if isinstance(exc, APIStatusError):
+            return exc.status_code >= 500
+        return True
 
     def _note_rate_limit(self, candidate: str) -> bool:
         """记录一次限流；达到阈值则熔断并返回 True。"""
