@@ -206,3 +206,18 @@ async def test_pipeline_predictor_offline(tmp_path, monkeypatch):
     assert pred.verdict == "supported"
     assert pred.usage["total_tokens"] > 0
     assert pred.latency_ms >= 0
+
+
+async def test_pipeline_predictor_reports_hitl_pause(tmp_path, monkeypatch):
+    """HITL 触发时 run_pipeline 返回 pending_review（无 usage 键），评测须给出可读报错而非 KeyError。"""
+    from app.eval.pipeline import PipelinePredictor
+
+    settings = Settings(_env_file=None, llm_cache_mode="off", llm_cache_dir=str(tmp_path))
+
+    async def fake_run_pipeline(*args, **kwargs):
+        return {"pending_review": True, "review": {"verdict": "unverifiable"}, "trace_id": "t1"}
+
+    monkeypatch.setattr("app.eval.pipeline.run_pipeline", fake_run_pipeline)
+    predictor = PipelinePredictor(settings=settings, client=LLMClient(settings))
+    with pytest.raises(RuntimeError, match="ENABLE_HITL"):
+        await predictor(Sample(id="t", text="帖子", label="supported"))

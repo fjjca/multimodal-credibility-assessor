@@ -36,6 +36,10 @@ class PipelinePredictor:
             retriever=self.retriever,
         )
         latency_ms = (time.perf_counter() - started) * 1000
+        if result.get("pending_review"):
+            raise RuntimeError(
+                "HITL 人工复核已触发，流水线暂停等待裁决；评测需关闭 ENABLE_HITL"
+            )
         usage = {
             "total_tokens": result["usage"]["total_tokens"],
             "n_calls": result["usage"]["n_calls"],

@@ -405,7 +405,7 @@ function showReview(taskId, p) {
   note.className = "review-note";
   note.textContent = "证据不足或低置信，已暂停等待人工裁决；提交后流水线继续。";
   reviewBox.append(h, meta, note);
-  for (const c of p.claims || []) {
+  for (const c of p.claims || p.review?.claims || []) {
     const d = document.createElement("div");
     d.className = "claimline";
     d.textContent = c;
