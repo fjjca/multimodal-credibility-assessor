@@ -38,6 +38,14 @@ class Settings(BaseSettings):
     llm_circuit_cooldown_seconds: float = 300.0
     # 每角色的备胎模型链，如 {"forensics": ["siliconflow:PaddlePaddle/PaddleOCR-VL-1.5"]}
     llm_role_fallbacks: dict[str, list[str]] = {}
+    # 不支持 thinking 参数的模型（provider:model）：调用时自动剔除 thinking/enable_thinking。
+    # 实测两家视觉模型都对 enable_thinking 返回 400/20015（"current model does not support
+    # parameter `enable_thinking`"），故视觉档一律不带该参数。
+    llm_no_thinking_models: list[str] = [
+        "zhipu:glm-4.6v-flash",
+        "siliconflow:Qwen/Qwen3-VL-8B-Instruct",
+        "siliconflow:PaddlePaddle/PaddleOCR-VL-1.5",
+    ]
 
     tavily_api_key: str = ""
     tavily_base_url: str = "https://api.tavily.com"
@@ -72,6 +80,10 @@ class Settings(BaseSettings):
 
     def retry_budget(self, role: str) -> int:
         return max(0, int(self.llm_retry_budgets.get(role, self.llm_max_retries)))
+
+    def no_thinking_models(self) -> set[str]:
+        """不支持 thinking 参数的候选模型集合（provider:model）。"""
+        return {c.strip() for c in self.llm_no_thinking_models if c and c.strip()}
 
     def role_chain(self, role: str) -> list[str]:
         """主模型 + 备胎链：限流或熔断时按顺序降级到下一个候选。"""

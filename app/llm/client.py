@@ -1,4 +1,5 @@
 import asyncio
+import json
 import random
 import time
 from dataclasses import dataclass, field
@@ -24,10 +25,48 @@ class CircuitOpenError(RuntimeError):
 
 
 # 兜底候选链的触发条件：限流/熔断，以及重试耗尽后的超时/连接失败/空响应/5xx。
-# 4xx（请求本身有问题）不触发兜底——换模型同样会失败，只会白白多烧一次配额。
+# 4xx（请求本身有问题）一般不触发兜底——换模型同样会失败，只会白白多烧一次配额；
+# 例外是「该模型不支持某参数」（见 unsupported_param_detail），那是模型自身限制，换备胎可能成功。
 FALLBACK_TRIGGER = (
     RateLimitError, CircuitOpenError, APITimeoutError, APIConnectionError, EmptyResponseError,
 )
+
+# 部分模型不支持的参数（智谱/硅基流动的视觉模型对 enable_thinking 返回 400/20015）
+_THINKING_KEYS = ("thinking", "enable_thinking")
+
+
+def strip_thinking(body: dict | None) -> dict | None:
+    """剔除 thinking 相关字段；没有可剔除的字段时原样返回（同一对象）。"""
+    if not body:
+        return body
+    out = {k: v for k, v in body.items() if k not in _THINKING_KEYS}
+    return out if out != body else body
+
+
+def error_body(exc: Exception) -> dict:
+    """提取 API 错误的 JSON body（没有就返回空 dict）。"""
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        return body
+    if isinstance(body, str):
+        try:
+            parsed = json.loads(body)
+        except (TypeError, ValueError):
+            return {"raw": body[:200]}
+        return parsed if isinstance(parsed, dict) else {"raw": body[:200]}
+    return {}
+
+
+def unsupported_param_detail(exc: Exception) -> str:
+    """判断错误是否为「模型不支持某参数」，返回可读说明；不是则返回空串。"""
+    if not isinstance(exc, APIStatusError) or exc.status_code != 400:
+        return ""
+    body = error_body(exc)
+    code = str(body.get("code", ""))
+    msg = str(body.get("message") or body.get("raw") or "")
+    if code == "20015" or "does not support parameter" in msg or "unsupported parameter" in msg:
+        return (msg or f"code={code}")[:160]
+    return ""
 
 
 @dataclass
@@ -60,6 +99,8 @@ class LLMClient:
         self._pace_lock = asyncio.Lock()
         self._last_request = 0.0
         self._breakers: dict[str, _Breaker] = {}
+        # 不支持 thinking 参数的候选模型：配置里声明的 + 运行时遇到 400/20015 学到的
+        self._no_thinking: set[str] = set(settings.no_thinking_models())
 
     def _provider_client(self, provider: str) -> AsyncOpenAI:
         if provider not in self._clients:
@@ -82,7 +123,7 @@ class LLMClient:
         extra_body: dict | None = None,
         model_override: str | None = None,
     ) -> LLMResult:
-        params = {"temperature": temperature, "max_tokens": max_tokens, "extra_body": extra_body}
+        base_params = {"temperature": temperature, "max_tokens": max_tokens, "extra_body": extra_body}
         candidates = self._candidates(role, model_override)
         last_exc: Exception | None = None
         for idx, candidate in enumerate(candidates):
@@ -91,6 +132,7 @@ class LLMClient:
                 obs.record_llm_circuit_open(role, candidate)
                 last_exc = CircuitOpenError(f"{candidate} 处于限流熔断冷却期")
                 continue
+            params = self._params_for(candidate, base_params)
             key = self.cache.key(provider, model, messages, params)
             hit = self.cache.get(key)
             if hit is not None:
@@ -101,8 +143,8 @@ class LLMClient:
             started = time.perf_counter()
             async with self._sem:
                 try:
-                    content, usage = await self._call_with_retry(
-                        role, provider, model, messages, params
+                    content, usage, eff_params = await self._attempt(
+                        role, candidate, provider, model, messages, params
                     )
                 except (FALLBACK_TRIGGER + (APIStatusError,)) as exc:
                     last_exc = exc
@@ -118,6 +160,8 @@ class LLMClient:
                         continue
                     raise
             latency_ms = (time.perf_counter() - started) * 1000
+            if eff_params is not params:
+                key = self.cache.key(provider, model, messages, eff_params)
             self.cache.put(key, content, usage, model)
             obs.record_llm_call(
                 role, model, cached=False,
@@ -141,12 +185,50 @@ class LLMClient:
 
     @staticmethod
     def _fallback_worthy(exc: Exception) -> bool:
-        """该异常是否值得换备胎：429/熔断/超时/连接失败/空响应/5xx 值得，4xx 不值得。"""
+        """该异常是否值得换备胎：429/熔断/超时/连接失败/空响应/5xx 值得；一般 4xx 不值得，
+        但「模型不支持某参数」是模型自身限制，同一请求对备胎可能合法，值得一试。"""
         if isinstance(exc, RateLimitError):
             return True
         if isinstance(exc, APIStatusError):
-            return exc.status_code >= 500
+            if exc.status_code >= 500:
+                return True
+            if exc.status_code == 400 and unsupported_param_detail(exc):
+                return True
+            return False
         return True
+
+    def _params_for(self, candidate: str, params: dict) -> dict:
+        """按候选模型裁剪请求参数：不支持 thinking 的模型直接剔除 thinking 字段。"""
+        body = params.get("extra_body")
+        if not body or candidate not in self._no_thinking:
+            return params
+        stripped = strip_thinking(body)
+        if stripped is body:
+            return params
+        return {**params, "extra_body": stripped or None}
+
+    async def _attempt(
+        self, role: str, candidate: str, provider: str, model: str, messages: list, params: dict
+    ) -> tuple[str, dict, dict]:
+        """调用候选模型；若因模型不支持 thinking 类参数被 400 拒绝，剔除参数后原地重试一次。"""
+        try:
+            content, usage = await self._call_with_retry(role, provider, model, messages, params)
+            return content, usage, params
+        except APIStatusError as exc:
+            detail = unsupported_param_detail(exc)
+            body = params.get("extra_body")
+            stripped = strip_thinking(body) if body else None
+            if not detail or stripped is None or stripped is body:
+                raise
+            self._no_thinking.add(candidate)
+            obs.record_llm_param_stripped(role, candidate)
+            obs.log.warning(
+                "llm unsupported param, retry without thinking",
+                extra={"role": role, "model": candidate, "detail": detail},
+            )
+            new_params = {**params, "extra_body": stripped or None}
+            content, usage = await self._call_with_retry(role, provider, model, messages, new_params)
+            return content, usage, new_params
 
     def _note_rate_limit(self, candidate: str) -> bool:
         """记录一次限流；达到阈值则熔断并返回 True。"""

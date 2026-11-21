@@ -6,7 +6,15 @@ from pathlib import Path
 
 from openai import BadRequestError, RateLimitError
 
-from app.llm.client import CircuitOpenError, EmptyResponseError, LLMClient, LLMResult
+from app import obs
+from app.llm.client import (
+    CircuitOpenError,
+    EmptyResponseError,
+    LLMClient,
+    LLMResult,
+    error_body,
+    unsupported_param_detail,
+)
 from app.pipeline.models import (
     Claim,
     ClaimConsistency,
@@ -35,6 +43,20 @@ _CONSISTENCY_TO_RELATION = {
     "inconsistent": "contradict",
     "uncertain": "neutral",
 }
+
+# 内容审核拒答的判定：智谱审核类错误码 + 消息关键词。参数错误（如 400/20015）不属于审核，
+# 早期把所有 400 都写成「内容审核拒答」，把参数问题伪装成了审核问题，误导了排查方向。
+_MODERATION_CODES = {"1113", "1211", "1225", "1502"}
+_MODERATION_KEYWORDS = ("违规", "审核", "敏感", "safety", "content_policy", "policy", "risk")
+
+
+def is_moderation_error(exc: Exception) -> bool:
+    """该 400 是否为内容审核拒答（而非请求参数/其它问题）。"""
+    body = error_body(exc)
+    if str(body.get("code", "")) in _MODERATION_CODES:
+        return True
+    msg = str(body.get("message") or body.get("raw") or "").lower()
+    return any(k in msg for k in _MODERATION_KEYWORDS)
 
 
 def load_image_url(image: str | None) -> str | None:
@@ -151,8 +173,24 @@ async def forensics(
             max_tokens=1024,
             extra_body={"thinking": {"type": "disabled"}},
         )
-    except BadRequestError:
-        return ForensicsResult(notes="内容审核拒答，无法取证"), None
+    except BadRequestError as exc:
+        body = error_body(exc)
+        obs.log.warning(
+            "forensics request rejected",
+            extra={
+                "status": exc.status_code,
+                "code": body.get("code"),
+                "body_text": str(body.get("message") or body.get("raw") or "")[:200],
+            },
+        )
+        detail = unsupported_param_detail(exc)
+        if detail:
+            return ForensicsResult(
+                notes=f"VLM 请求参数不被支持（{detail}），取证降级", overall="uncertain"
+            ), None
+        if is_moderation_error(exc):
+            return ForensicsResult(notes="内容审核拒答，无法取证"), None
+        return ForensicsResult(notes="VLM 请求被拒（HTTP 400），取证降级"), None
     except EmptyResponseError:
         return ForensicsResult(notes="VLM 多次返回空响应，取证降级"), None
     except (RateLimitError, CircuitOpenError):

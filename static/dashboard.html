@@ -259,7 +259,8 @@ function renderRateLimits(box, series) {
   const rel = series.filter((s) => s.name === "llm_rate_limited_total");
   const fb = series.filter((s) => s.name === "llm_fallbacks_total");
   const cb = series.filter((s) => s.name === "llm_circuit_open_total");
-  if (!rel.length && !fb.length && !cb.length) {
+  const ps = series.filter((s) => s.name === "llm_param_stripped_total");
+  if (!rel.length && !fb.length && !cb.length && !ps.length) {
     const e = document.createElement("div");
     e.className = "empty";
     e.textContent = "本次进程尚无限流记录（计数器仅在进程内累计，重启清零）。";
@@ -283,12 +284,14 @@ function renderRateLimits(box, series) {
   cards.append(card("429 次数", n429, n429 ? "warn" : "good"));
   cards.append(card("熔断次数", sum(cb), sum(cb) ? "bad" : "good"));
   cards.append(card("备胎切换", sum(fb)));
+  cards.append(card("参数剔除", sum(ps)));
   box.appendChild(cards);
 
   const rows = [
     ...rel.map((s) => ["限流 429", s.labels.role || "", s.labels.model || "", s.value]),
     ...fb.map((s) => ["备胎切换", s.labels.role || "", `${s.labels.from_model || ""} → ${s.labels.to_model || ""}`, s.value]),
     ...cb.map((s) => ["熔断", s.labels.role || "", s.labels.model || "", s.value]),
+    ...ps.map((s) => ["参数剔除", s.labels.role || "", s.labels.model || "", s.value]),
   ].sort((a, b) => b[3] - a[3]);
   const table = document.createElement("table");
   const thead = document.createElement("thead");

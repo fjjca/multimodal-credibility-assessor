@@ -63,6 +63,9 @@ LLM_LATENCY = Histogram("llm_latency_seconds", "实时 LLM 调用耗时", ["role
 LLM_RATE_LIMITED = Counter("llm_rate_limited_total", "被限流(429)的调用次数", ["role", "model"])
 LLM_FALLBACKS = Counter("llm_fallbacks_total", "因限流/熔断切换备胎模型的次数", ["role", "from_model", "to_model"])
 LLM_CIRCUIT_OPEN = Counter("llm_circuit_open_total", "因连续限流被熔断的次数", ["role", "model"])
+LLM_PARAM_STRIPPED = Counter(
+    "llm_param_stripped_total", "因模型不支持参数（如 thinking）剔除参数后重试的次数", ["role", "model"]
+)
 STAGE_LATENCY = Histogram("stage_latency_seconds", "流水线各阶段耗时", ["stage"], buckets=_LLM_BUCKETS)
 
 VERIFY_REQUESTS = Counter("verify_requests_total", "收到的核查请求", ["has_image"])
@@ -92,6 +95,10 @@ def record_llm_fallback(role: str, from_model: str, to_model: str) -> None:
 
 def record_llm_circuit_open(role: str, model: str) -> None:
     LLM_CIRCUIT_OPEN.labels(role=role, model=model).inc()
+
+
+def record_llm_param_stripped(role: str, model: str) -> None:
+    LLM_PARAM_STRIPPED.labels(role=role, model=model).inc()
 
 
 def record_stage(stage: str, seconds: float) -> None:

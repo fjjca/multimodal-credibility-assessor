@@ -326,3 +326,85 @@ async def test_no_fallback_on_client_error(tmp_path, monkeypatch):
     with pytest.raises(APIStatusError):
         await client.chat("judge", [{"role": "user", "content": "hi"}])
     assert calls == ["glm-4.7-flash"]
+
+
+def _param_error():
+    resp = httpx.Response(400, request=httpx.Request("POST", "http://test"))
+    body = {
+        "code": 20015,
+        "message": "Value error, current model does not support parameter `enable_thinking`.",
+    }
+    return APIStatusError("http 400", response=resp, body=body)
+
+
+async def test_thinking_stripped_for_models_that_reject_it(tmp_path, monkeypatch):
+    """视觉模型对 enable_thinking 返回 400/20015，客户端按候选模型自动剔除该参数。"""
+    client = make_client(tmp_path, llm_max_retries=0)
+    seen = []
+
+    async def fake_call_once(provider, model, messages, params):
+        seen.append(params.get("extra_body"))
+        return "ok", {"total_tokens": 3}
+
+    monkeypatch.setattr(client, "_call_once", fake_call_once)
+    body = {"thinking": {"type": "disabled"}}
+    await client.chat("forensics", [{"role": "user", "content": "hi"}], extra_body=body)
+    assert seen == [None]   # 主模型 zhipu:glm-4.6v-flash 在 no-thinking 名单里
+
+
+async def test_thinking_kept_for_supported_models(tmp_path, monkeypatch):
+    client = make_client(tmp_path, llm_max_retries=0)
+    seen = []
+
+    async def fake_call_once(provider, model, messages, params):
+        seen.append(params.get("extra_body"))
+        return "ok", {"total_tokens": 3}
+
+    monkeypatch.setattr(client, "_call_once", fake_call_once)
+    body = {"thinking": {"type": "disabled"}}
+    await client.chat("decompose", [{"role": "user", "content": "hi"}], extra_body=body)
+    assert seen == [body]   # 文本模型照常下发
+
+
+async def test_unsupported_param_triggers_retry_without_thinking(tmp_path, monkeypatch):
+    """未知模型报 400/20015 时，剔除 thinking 原地重试一次，而不是直接失败。"""
+    client = make_client(tmp_path, llm_max_retries=0)
+    seen = []
+
+    async def fake_call_once(provider, model, messages, params):
+        seen.append(params.get("extra_body"))
+        if len(seen) == 1:
+            raise _param_error()
+        return "ok", {"total_tokens": 3}
+
+    monkeypatch.setattr(client, "_call_once", fake_call_once)
+    body = {"thinking": {"type": "disabled"}}
+    r = await client.chat("decompose", [{"role": "user", "content": "hi"}], extra_body=body)
+    assert r.content == "ok"
+    assert seen == [body, None]
+    assert obs.LLM_PARAM_STRIPPED.labels(
+        role="decompose", model="zhipu:glm-4-flash"
+    )._value.get() >= 1
+
+
+async def test_param_error_falls_back_to_backup_model(tmp_path, monkeypatch):
+    """参数错误是模型自身限制，同一请求对备胎可能合法——允许切备胎。"""
+    client = make_client(
+        tmp_path,
+        llm_max_retries=0,
+        llm_role_fallbacks={"decompose": ["siliconflow:Qwen/Qwen3-8B"]},
+    )
+    calls = []
+
+    async def fake_call_once(provider, model, messages, params):
+        calls.append(f"{provider}:{model}")
+        if provider == "zhipu":
+            raise _param_error()
+        return "ok", {"total_tokens": 3}
+
+    monkeypatch.setattr(client, "_call_once", fake_call_once)
+    r = await client.chat("decompose", [{"role": "user", "content": "hi"}],
+                          extra_body={"thinking": {"type": "disabled"}})
+    assert r.content == "ok"
+    # 主模型自愈重试一次（不带 thinking）后仍失败，才切备胎
+    assert calls == ["zhipu:glm-4-flash", "zhipu:glm-4-flash", "siliconflow:Qwen/Qwen3-8B"]

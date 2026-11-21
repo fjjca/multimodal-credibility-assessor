@@ -22,9 +22,18 @@ PNG_1PX = base64.b64decode(
 )
 
 
-def _bad_request_error():
+def _bad_request_error(code=1113, message="文本内容存在违规风险，请调整输入"):
     resp = httpx.Response(400, request=httpx.Request("POST", "http://x"))
-    return BadRequestError("content policy", response=resp, body=None)
+    return BadRequestError("bad request", response=resp, body={"code": code, "message": message})
+
+
+def _param_error():
+    resp = httpx.Response(400, request=httpx.Request("POST", "http://x"))
+    body = {
+        "code": 20015,
+        "message": "Value error, current model does not support parameter `enable_thinking`.",
+    }
+    return BadRequestError("bad request", response=resp, body=body)
 
 
 def _rate_limit_error():
@@ -185,6 +194,34 @@ async def test_forensics_content_policy_degrades(tmp_path, monkeypatch):
     assert fr is not None
     assert "审核" in fr.notes
     assert fr.overall == "uncertain"
+
+
+async def test_forensics_param_error_not_reported_as_moderation(tmp_path, monkeypatch):
+    """参数错误（如 400/20015）不能伪装成「内容审核拒答」——那会把排查引向错误方向。"""
+    async def chat_fn(role, messages, **kw):
+        raise _param_error()
+
+    client = _client(tmp_path, monkeypatch, chat_fn)
+    fr, res = await forensics(client, "data:image/png;base64,abc", "t", [Claim(id="c1", text="a")])
+    assert res is None
+    assert fr is not None and fr.overall == "uncertain"
+    assert "审核" not in fr.notes
+    assert "参数" in fr.notes
+
+
+async def test_forensics_unknown_400_not_reported_as_moderation(tmp_path, monkeypatch):
+    """没有 body 的 400 无法判定原因，只能说「被拒」，不能猜成审核。"""
+    resp = httpx.Response(400, request=httpx.Request("POST", "http://x"))
+    err = BadRequestError("bad request", response=resp, body=None)
+
+    async def chat_fn(role, messages, **kw):
+        raise err
+
+    client = _client(tmp_path, monkeypatch, chat_fn)
+    fr, res = await forensics(client, "data:image/png;base64,abc", "t", [Claim(id="c1", text="a")])
+    assert res is None and fr is not None
+    assert "审核" not in fr.notes
+    assert "被拒" in fr.notes
 
 
 async def test_forensics_rate_limit_degrades_without_killing_pipeline(tmp_path, monkeypatch):

@@ -79,6 +79,7 @@ cp .env.example .env                             # 填入 key
 - `JUDGE_CONFIDENCE_THRESHOLD`（默认 0.6）：低于此值升级强裁判；HITL 开启时也是触发人工复核的阈值。
 - `LLM_CACHE_MODE`：`off` / `readwrite`（默认） / `replay`（无 key 时回放已录制响应）。
 - `LLM_ROLE_FALLBACKS` / `LLM_CIRCUIT_THRESHOLD` / `LLM_RETRY_BUDGETS`：限流止血三件套（重试预算、熔断、兜底候选链），详见[限流止血小节](#限流止血重试预算--熔断--兜底候选链)。
+- `LLM_NO_THINKING_MODELS`：声明不支持 `thinking` 参数的模型（视觉模型对 `enable_thinking` 返回 400），客户端自动剔除该参数，详见[参数兼容小节](#参数兼容模型不支持-thinking-时的自愈)。
 - 换模型 / 升级付费裁判：只改 `MODEL_*` 一行，不改代码。
 
 ## 评测
@@ -157,6 +158,7 @@ curl http://localhost:8000/metrics      # Prometheus 文本 exposition，可直�
 | `llm_rate_limited_total` | Counter | role / model | 429 次数 |
 | `llm_fallbacks_total` | Counter | role / from_model / to_model | 兜底候选切换次数 |
 | `llm_circuit_open_total` | Counter | role / model | 熔断触发次数 |
+| `llm_param_stripped_total` | Counter | role / model | 因模型不支持参数而剔除参数后重试的次数 |
 
 结构化日志走应用 logger（`credibility`），经根 JSON handler 输出到 stdout，事件含 `verify accepted/done/failed`、`stage done`、`llm retry`，字段如 `task_id / verdict / confidence / latency_s / total_tokens / stage / attempt / error`。容器里即 `docker logs` 可采的 JSON 行。
 
@@ -185,8 +187,8 @@ curl http://localhost:8000/metrics      # Prometheus 文本 exposition，可直�
 
   输出每个候选模型的 `ok / rate_limited / error_NNN`，据此决定谁是主、谁是备胎——不要靠猜。
 
-- **观测**：新增 `llm_rate_limited_total`（role/model）、`llm_fallbacks_total`（role/from_model/to_model）、`llm_circuit_open_total`（role/model）三个计数器，`/dashboard.html` 的"限流与降级（本次进程）"面板直接展示 429 / 熔断 / 备胎切换次数与明细表。
-- **兜底触发条件**：限流/熔断，以及重试耗尽后的**超时 / 连接失败 / 空响应 / 5xx**——免费档"卡住"和 429 一样致命，都该换人。**4xx 不触发**：请求本身有问题（参数错、鉴权失败），换模型同样会失败，只白烧一次配额。取证阶段额外覆盖 429（降级继续，见上）。
+- **观测**：新增 `llm_rate_limited_total`（role/model）、`llm_fallbacks_total`（role/from_model/to_model）、`llm_circuit_open_total`（role/model）、`llm_param_stripped_total`（role/model）四个计数器，`/dashboard.html` 的"限流与降级（本次进程）"面板直接展示 429 / 熔断 / 备胎切换 / 参数剔除次数与明细表。
+- **兜底触发条件**：限流/熔断，以及重试耗尽后的**超时 / 连接失败 / 空响应 / 5xx**——免费档"卡住"和 429 一样致命，都该换人。**一般 4xx 不触发**：请求本身有问题（鉴权失败等），换模型同样会失败，只白烧一次配额；**例外是"该模型不支持某参数"**（如 400/20015），那是模型自身限制，同一请求对备胎可能合法，值得换人。取证阶段额外覆盖 429（降级继续，见上）。
 
 ### 体检实测（2026-11-21，免费档，逐模型单次调用）
 
@@ -206,6 +208,27 @@ curl http://localhost:8000/metrics      # Prometheus 文本 exposition，可直�
 - **线上验证**：曾因 `glm-4.7-flash` 持续 429 而失败的样本 `s01`，在兜底链生效后跑通，trace 记录 `judge_model=glm-4.5-flash`、裁决正常产出（该次检索 off，故为 `unverifiable` 弃权而非误判）。原本"整条流水线崩掉"变成"换个模型继续跑"。
 - **收紧重试预算的实测收益**（同一样本 s01，缓存关闭）：judge 预算 2→1 后，429 只留一次 15s 重试即切备胎，端到端延迟 **128s → 51s**（-60%），裁决结论与 token 消耗基本不变（7661 vs 7647）。限流是账户级冷却，原地多等 45s 等不到额度，纯属浪费。
 - **forensics 已配跨平台备胎**：同平台 VLM 档一起限流，故走 SiliconFlow——填好 `SILICONFLOW_API_KEY` 后用 `LLM_ROLE_FALLBACKS={"forensics":["siliconflow:Qwen/Qwen3-VL-8B-Instruct","siliconflow:PaddlePaddle/PaddleOCR-VL-1.5"]}`；两档都没配时取证走**降级**（`uncertain` + 显式标注，文本核查照常出结论）。
+
+## 参数兼容：模型不支持 thinking 时的自愈
+
+取证阶段一度**永远拿不到图像证据**：无论主模型还是跨平台备胎，都被同一个 `HTTP 400 {"code":20015}` 挡回来，且报给前端的是"内容审核拒答"——排查方向被完全带偏。
+
+**根因（实测，非猜测）**：调用层无条件下发 `extra_body={"thinking":{"type":"disabled"}}`，两家视觉模型都把它翻译成 `enable_thinking` 并直接拒收。
+
+| 模型 | 带 `thinking` | 不带 `thinking` |
+|---|---|---|
+| `siliconflow:Qwen/Qwen3-VL-8B-Instruct` | ❌ 400 code=20015 `does not support parameter 'enable_thinking'` | ✅ 200，取证 JSON 正常返回 |
+| `zhipu:glm-4.6v-flash` | ❌ 400 code=20015（同上） | ⚠️ 当时 429 配额受限，未能直连验证 |
+
+三重伤害叠加：**主模型被打死** → 4xx 不切备胎，**跨平台备胎也用不上**（备胎同样带这个参数） → `except BadRequestError` 把所有 400 都写成"内容审核拒答"，**把参数问题伪装成了审核问题**。
+
+**修复三层**：
+
+1. **客户端按候选模型裁剪参数**：`LLM_NO_THINKING_MODELS`（默认含 3 个视觉模型）声明不支持 thinking 的 `provider:model`，调用前自动剔除 `thinking`/`enable_thinking`；文本模型照常下发，不受影响。
+2. **运行时自愈**：遇到 `400/20015` 时自动剔除 thinking 原地重试一次，并把该模型记进本进程的黑名单（`llm_param_stripped_total` 计数器可观测），未登记的模型第一次踩坑即自愈。
+3. **错误如实分类**：`forensics` 区分"内容审核拒答 / 参数不被支持 / 其它 400"三种，notes 各写各的，并打出 status + code + body 日志，不再静默吞掉 body。
+
+**验证**：真实链路跑通——zhipu 主模型 429 → 切 SiliconFlow 备胎 → 200 取证 JSON（`overall=consistent`，图像描述正确），图像证据节点不再为空。
 
 ## 编排：LangGraph（flag 门控，可选）
 
@@ -327,7 +350,7 @@ ENABLE_CALIBRATION=true .venv/Scripts/python -m app
 ## 测试
 
 ```bash
-.venv/Scripts/python -m pytest        # 143 项，覆盖客户端/缓存/重试与熔断/兜底链/模型体检脚本/各流水线阶段/取证/路由/评测/API/可观测性/LangGraph 编排/循环辩论/检查点续跑/HITL 人工介入/置信度校准
+.venv/Scripts/python -m pytest        # 152 项，覆盖客户端/缓存/重试与熔断/兜底链/参数兼容自愈/模型体检脚本/各流水线阶段/取证/路由/评测/API/可观测性/LangGraph 编排/循环辩论/检查点续跑/HITL 人工介入/置信度校准
 ```
 
 ## 项目结构
