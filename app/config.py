@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     llm_no_thinking_models: list[str] = [
         "zhipu:glm-4.6v-flash",
         "siliconflow:Qwen/Qwen3-VL-8B-Instruct",
+        "siliconflow:Qwen/Qwen3-VL-8B-Thinking",
         "siliconflow:PaddlePaddle/PaddleOCR-VL-1.5",
     ]
 
