@@ -29,7 +29,13 @@ from app.pipeline.adjudicate import (
 )
 from app.pipeline.decompose import decompose
 from app.pipeline.evidence_graph import build_evidence_graph
-from app.pipeline.forensics import forensics, image_evidence, image_relations, load_image_url
+from app.pipeline.forensics import (
+    forensics,
+    image_evidence,
+    image_query_hints,
+    image_relations,
+    load_image_url,
+)
 from app.pipeline.graph import graph_stats
 from app.pipeline.retrieve import retrieve_evidence
 from app.pipeline.runner import _build_result, _usage
@@ -43,6 +49,7 @@ class GraphState(TypedDict, total=False):
     forensics_detail: dict | None
     img_ev: object | None
     img_rels: list | None
+    query_hints: dict | None
     evidences: list
     claim_map: dict
     g: object | None
@@ -97,11 +104,12 @@ def build_pipeline_graph(settings, client, retriever, emit, trace_id, checkpoint
             })
             return {
                 "image_url": image_url, "forensics_detail": None,
-                "img_ev": None, "img_rels": None,
+                "img_ev": None, "img_rels": None, "query_hints": {},
                 "trace": [{"stage": "forensics", "skipped": True}],
             }
         img_ev = image_evidence(fr)
         img_rels = image_relations(fr, state["claims"])
+        query_hints = image_query_hints(fr)
         detail = {
             "ocr_text": fr.ocr_text,
             "description": fr.description,
@@ -117,7 +125,7 @@ def build_pipeline_graph(settings, client, retriever, emit, trace_id, checkpoint
         entry = await done("forensics", "多模态取证", detail, results)
         return {
             "image_url": image_url, "forensics_detail": detail,
-            "img_ev": img_ev, "img_rels": img_rels,
+            "img_ev": img_ev, "img_rels": img_rels, "query_hints": query_hints,
             "results": results, "trace": [entry],
         }
 
@@ -125,7 +133,8 @@ def build_pipeline_graph(settings, client, retriever, emit, trace_id, checkpoint
         await begin("retrieve", "证据检索")
         if settings.enable_retrieval:
             evidences, claim_map = await retrieve_evidence(
-                retriever, state["claims"], settings.retrieve_top_k
+                retriever, state["claims"], settings.retrieve_top_k,
+                hints=state.get("query_hints"),
             )
         else:
             evidences, claim_map = [], {c.id: [] for c in state["claims"]}

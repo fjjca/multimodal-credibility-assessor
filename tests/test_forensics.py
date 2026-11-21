@@ -11,6 +11,7 @@ from app.pipeline.forensics import (
     IMAGE_EVIDENCE_ID,
     forensics,
     image_evidence,
+    image_query_hints,
     image_relations,
     load_image_url,
     parse_forensics,
@@ -108,9 +109,24 @@ def test_image_evidence_shape():
     fr = ForensicsResult(ocr_text="文字", description="描述", notes="备注")
     ev = image_evidence(fr)
     assert ev.id == IMAGE_EVIDENCE_ID
-    assert ev.source_tier == "social"
+    assert ev.source_tier == "uploaded"
     assert ev.url == ""
     assert "文字" in ev.content and "描述" in ev.content and "备注" in ev.content
+
+
+def test_image_query_hints_only_for_image_comparable_claims():
+    fr = ForensicsResult(
+        ocr_text="PARIS 2024",
+        description="埃菲尔铁塔海报",
+        claims=[
+            {"claim_id": "c1", "consistency": "inconsistent"},
+            {"claim_id": "c2", "consistency": "uncertain"},
+        ],
+    )
+    hints = image_query_hints(fr)
+    assert set(hints) == {"c1"}
+    assert "PARIS 2024" in hints["c1"]
+    assert image_query_hints(None) == {}
 
 
 def test_image_relations_mapping():

@@ -2,8 +2,8 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel
 
-SOURCE_TIERS = ("official", "mainstream", "social", "unknown")
-TIER_WEIGHTS = {"official": 1.0, "mainstream": 0.8, "social": 0.4, "unknown": 0.5}
+SOURCE_TIERS = ("uploaded", "official", "mainstream", "social", "unknown")
+TIER_WEIGHTS = {"uploaded": 1.0, "official": 1.0, "mainstream": 0.8, "social": 0.4, "unknown": 0.5}
 
 RELATIONS = ("support", "contradict", "neutral")
 

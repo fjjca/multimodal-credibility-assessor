@@ -87,6 +87,13 @@ async def test_retrieve_evidence_dedup_and_ids():
     assert retriever.queries == ["q1", "q2"]
 
 
+async def test_retrieve_evidence_appends_image_hint():
+    retriever = FakeRetriever([])
+    claims = [Claim(id="c1", text="q1"), Claim(id="c2", text="q2")]
+    await retrieve_evidence(retriever, claims, top_k=3, hints={"c1": "炒鸡肉"})
+    assert retriever.queries == ["q1 炒鸡肉", "q2"]
+
+
 async def test_tavily_retriever_cache_hit(tmp_path):
     cache = ResponseCache(str(tmp_path), "readwrite")
     raw = {"results": [{"title": "T", "url": "https://gov.cn/x", "content": "C", "score": 0.9}]}

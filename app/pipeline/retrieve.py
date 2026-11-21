@@ -81,15 +81,23 @@ class FakeRetriever:
 
 
 async def retrieve_evidence(
-    retriever: Retriever, claims: list[Claim], top_k: int
+    retriever: Retriever, claims: list[Claim], top_k: int, hints: dict[str, str] | None = None
 ) -> tuple[list[Evidence], dict[str, list[str]]]:
-    """逐断言检索，按 URL 去重并分配全局证据 id，返回 (证据列表, 断言->证据id 映射)。"""
+    """逐断言检索，按 URL 去重并分配全局证据 id，返回 (证据列表, 断言->证据id 映射)。
+
+    hints 按 claim_id 追加检索关键词（图像 OCR/描述），避免只拿断言原文检索出
+    关于事件的网页冒充支持证据。
+    """
     seen: dict[str, str] = {}
     evidences: list[Evidence] = []
     claim_map: dict[str, list[str]] = {}
     for c in claims:
         ids = []
-        for e in await retriever.search(c.text, top_k):
+        query = c.text
+        hint = (hints or {}).get(c.id, "").strip()
+        if hint:
+            query = f"{c.text} {hint}".strip()
+        for e in await retriever.search(query, top_k):
             dedup = e.url or e.title
             if dedup in seen:
                 ids.append(seen[dedup])

@@ -121,8 +121,23 @@ def image_evidence(fr: ForensicsResult) -> Evidence:
         title="用户上传图像（VLM 取证）",
         url="",
         content=content,
-        source_tier="social",
+        source_tier="uploaded",
     )
+
+
+def image_query_hints(fr: ForensicsResult | None, limit: int = 60) -> dict[str, str]:
+    """给断言配检索关键词（图像 OCR/描述），只对 VLM 能与图像对照的断言生效。
+
+    否则断言原文会检索出关于该事件的真实网页冒充支持证据（"照片拍摄于2020年东京奥运会"
+    → 新华网报道），凭空抬高支持权重。
+    """
+    if fr is None:
+        return {}
+    hint = " ".join(x for x in (fr.ocr_text.strip(), fr.description.strip()) if x).strip()
+    if not hint:
+        return {}
+    hint = hint[:limit]
+    return {c.claim_id: hint for c in fr.claims if c.consistency != "uncertain"}
 
 
 def image_relations(fr: ForensicsResult, claims: list[Claim]) -> list[Relation]:

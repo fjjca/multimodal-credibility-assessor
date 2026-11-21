@@ -12,7 +12,13 @@ from app.llm.client import LLMClient, LLMResult
 from app.pipeline.adjudicate import adjudicate
 from app.pipeline.decompose import decompose
 from app.pipeline.evidence_graph import build_evidence_graph
-from app.pipeline.forensics import forensics, image_evidence, image_relations, load_image_url
+from app.pipeline.forensics import (
+    forensics,
+    image_evidence,
+    image_query_hints,
+    image_relations,
+    load_image_url,
+)
 from app.pipeline.graph import claim_evidence_summary, graph_elements, graph_stats, save_graph
 from app.pipeline.retrieve import FakeRetriever, TavilyRetriever, retrieve_evidence
 
@@ -153,9 +159,11 @@ async def run_pipeline(
     fr, fr_res = await forensics(client, image_url, text, claims)
     img_ev = img_rels = None
     forensics_detail = None
+    query_hints: dict[str, str] = {}
     if fr is not None:
         img_ev = image_evidence(fr)
         img_rels = image_relations(fr, claims)
+        query_hints = image_query_hints(fr)
         forensics_detail = {
             "ocr_text": fr.ocr_text,
             "description": fr.description,
@@ -180,7 +188,9 @@ async def run_pipeline(
     # 3. 证据检索
     await begin("retrieve", "证据检索")
     if settings.enable_retrieval:
-        evidences, claim_map = await retrieve_evidence(retriever, claims, settings.retrieve_top_k)
+        evidences, claim_map = await retrieve_evidence(
+            retriever, claims, settings.retrieve_top_k, hints=query_hints
+        )
     else:
         evidences, claim_map = [], {c.id: [] for c in claims}
     await done(
