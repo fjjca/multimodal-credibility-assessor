@@ -37,9 +37,14 @@ def build_graph(
             score=e.score,
         )
     for r in relations:
-        if r.relation not in ("support", "contradict"):
+        if r.relation not in ("support", "contradict", "neutral"):
             continue
         if r.claim_id not in g or r.evidence_id not in by_id:
+            continue
+        if r.relation == "neutral":
+            # 中性边只用于可视化（权重 0）：让"检索到但判为不相关"的证据在图上可见，
+            # 裁决只读 support/contradict 汇总，不受影响
+            g.add_edge(r.claim_id, r.evidence_id, relation="neutral", weight=0.0)
             continue
         weight = TIER_WEIGHTS.get(by_id[r.evidence_id].source_tier, 0.5)
         g.add_edge(r.claim_id, r.evidence_id, relation=r.relation, weight=weight)
@@ -64,6 +69,7 @@ def graph_stats(g: nx.Graph) -> dict:
         "n_support": rels.count("support"),
         "n_contradict": rels.count("contradict"),
         "n_same_source": rels.count("same_source"),
+        "n_neutral": rels.count("neutral"),
     }
 
 

@@ -52,8 +52,10 @@ def test_build_graph_edges_and_weights():
     assert g.edges["c1", "e1"]["weight"] == pytest.approx(1.0)
     assert g.edges["c1", "e2"]["relation"] == "contradict"
     assert g.edges["c1", "e2"]["weight"] == pytest.approx(0.4)
-    # neutral 不建边
-    assert not g.has_edge("c2", "e3")
+    # neutral 建零权重边，仅供可视化，不进裁决汇总
+    assert g.has_edge("c2", "e3")
+    assert g.edges["c2", "e3"]["relation"] == "neutral"
+    assert g.edges["c2", "e3"]["weight"] == 0.0
     # 同域证据 e2/e3 同源边
     assert g.edges["e2", "e3"]["relation"] == "same_source"
 
@@ -66,6 +68,15 @@ def test_graph_stats():
     assert s["n_support"] == 1
     assert s["n_contradict"] == 1
     assert s["n_same_source"] == 1
+    assert s["n_neutral"] == 1
+
+
+def test_neutral_edges_do_not_reach_the_judge():
+    """中性边只用于画图：裁决用的支持/矛盾汇总里不应出现。"""
+    g = build_graph(*_fixture())
+    summary = {s["claim_id"]: s for s in claim_evidence_summary(g)}
+    assert summary["c2"]["support"] == []
+    assert summary["c2"]["contradict"] == []
 
 
 def test_claim_evidence_summary():
@@ -100,4 +111,5 @@ def test_graph_elements_cytoscape_shape():
     assert rels[("c1", "e2")]["relation"] == "contradict"
     assert rels[("e2", "e3")]["relation"] == "same_source"
     assert all(e["data"]["id"] for e in el["edges"])
-    assert len(el["nodes"]) == 5 and len(el["edges"]) == 3
+    assert len(el["nodes"]) == 5 and len(el["edges"]) == 4
+    assert rels[("c2", "e3")]["relation"] == "neutral"

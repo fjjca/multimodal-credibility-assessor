@@ -4,7 +4,8 @@ import re
 import networkx as nx
 from openai import BadRequestError
 
-from app.llm.client import LLMClient, LLMResult
+from app import obs
+from app.llm.client import LLMClient, LLMResult, is_moderation_error
 from app.pipeline.graph import build_graph
 from app.pipeline.models import RELATIONS, Claim, Evidence, Relation
 
@@ -19,16 +20,19 @@ _SNIPPET = 300
 
 
 def parse_relations(content: str, claim_id: str, valid_ids: set[str]) -> list[Relation]:
-    match = re.search(r"\[.*\]", content or "", re.S)
-    items = []
-    if match:
+    # 模型常把每个证据写成独立的一行 JSON 数组（[{"evidence_id":"e1",...}] × N），
+    # 只取第一个数组会丢掉其余关系，图上就只剩少数几条线
+    items: list = []
+    for blob in re.findall(r"\[.*?\]", content or "", re.S):
         try:
-            items = json.loads(match.group(0), strict=False)
+            parsed = json.loads(blob, strict=False)
         except json.JSONDecodeError:
-            items = []
+            continue
+        if isinstance(parsed, list):
+            items.extend(parsed)
     out: list[Relation] = []
     seen: set[str] = set()
-    for it in items if isinstance(items, list) else []:
+    for it in items:
         if not isinstance(it, dict):
             continue
         eid = str(it.get("evidence_id", ""))
@@ -60,8 +64,15 @@ async def classify_relations(
             max_tokens=512,
             extra_body={"thinking": {"type": "disabled"}},
         )
-    except BadRequestError:
-        # 网页证据可能含敏感内容触发审核拒答：该断言不建边，流水线继续
+    except BadRequestError as exc:
+        # 网页证据可能含敏感内容触发审核拒答：该断言的关系判定整体失败。
+        # 这里如实记录（区分审核拒答与其它 400），关系缺失由调用方补中性边兜底。
+        reason = "moderation" if is_moderation_error(exc) else "bad_request"
+        obs.record_relation_judge_failed(reason)
+        obs.log.warning(
+            "relation judgement rejected",
+            extra={"claim_id": claim.id, "reason": reason, "status": exc.status_code},
+        )
         return [], None
     rels = parse_relations(result.content, claim.id, {e.id for e in evidences})
     return rels, result
@@ -85,6 +96,14 @@ async def build_evidence_graph(
         relations.extend(rels)
         if res is not None:
             results.append(res)
+        judged = {r.evidence_id for r in rels}
+        missing = [e for e in evs if e.id not in judged]
+        if missing:
+            # 判定被拒（审核/参数）或模型漏判：补中性边（权重 0，不进裁决），
+            # 否则这些证据在图上是孤立点，看上去"没有连线"
+            reason = "judge_failed" if res is None else "model_omitted"
+            obs.record_relation_unjudged(reason, len(missing))
+            relations.extend(Relation(claim_id=c.id, evidence_id=e.id, relation="neutral") for e in missing)
     all_evidences = list(evidences)
     if image_evidence is not None:
         all_evidences.append(image_evidence)

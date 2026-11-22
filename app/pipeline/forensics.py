@@ -13,6 +13,7 @@ from app.llm.client import (
     LLMClient,
     LLMResult,
     error_body,
+    is_moderation_error,
     unsupported_param_detail,
 )
 from app.pipeline.models import (
@@ -44,19 +45,7 @@ _CONSISTENCY_TO_RELATION = {
     "uncertain": "neutral",
 }
 
-# 内容审核拒答的判定：智谱审核类错误码 + 消息关键词。参数错误（如 400/20015）不属于审核，
-# 早期把所有 400 都写成「内容审核拒答」，把参数问题伪装成了审核问题，误导了排查方向。
-_MODERATION_CODES = {"1113", "1211", "1225", "1502"}
-_MODERATION_KEYWORDS = ("违规", "审核", "敏感", "safety", "content_policy", "policy", "risk")
-
-
-def is_moderation_error(exc: Exception) -> bool:
-    """该 400 是否为内容审核拒答（而非请求参数/其它问题）。"""
-    body = error_body(exc)
-    if str(body.get("code", "")) in _MODERATION_CODES:
-        return True
-    msg = str(body.get("message") or body.get("raw") or "").lower()
-    return any(k in msg for k in _MODERATION_KEYWORDS)
+# 内容审核拒答的判定已挪到 app.llm.client（关系判定阶段也要用同一套判定）
 
 
 def load_image_url(image: str | None) -> str | None:

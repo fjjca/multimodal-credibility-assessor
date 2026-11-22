@@ -68,6 +68,11 @@ LLM_PARAM_STRIPPED = Counter(
 )
 STAGE_LATENCY = Histogram("stage_latency_seconds", "流水线各阶段耗时", ["stage"], buckets=_LLM_BUCKETS)
 
+RELATION_JUDGE_FAILED = Counter(
+    "relation_judge_failed_total", "证据关系判定调用失败的次数（审核拒答/其它 400）", ["reason"]
+)
+RELATION_UNJUDGED = Counter("relation_unjudged_total", "未判定关系（补中性边）的数量", ["reason"])
+
 VERIFY_REQUESTS = Counter("verify_requests_total", "收到的核查请求", ["has_image"])
 VERIFY_LATENCY = Histogram("verify_latency_seconds", "整条核查流水线耗时", buckets=_VERIFY_BUCKETS)
 VERIFY_ERRORS = Counter("verify_errors_total", "核查失败次数")
@@ -99,6 +104,14 @@ def record_llm_circuit_open(role: str, model: str) -> None:
 
 def record_llm_param_stripped(role: str, model: str) -> None:
     LLM_PARAM_STRIPPED.labels(role=role, model=model).inc()
+
+
+def record_relation_judge_failed(reason: str) -> None:
+    RELATION_JUDGE_FAILED.labels(reason=reason).inc()
+
+
+def record_relation_unjudged(reason: str, count: int = 1) -> None:
+    RELATION_UNJUDGED.labels(reason=reason).inc(count)
 
 
 def record_stage(stage: str, seconds: float) -> None:

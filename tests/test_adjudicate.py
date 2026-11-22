@@ -8,7 +8,7 @@ from app.pipeline.adjudicate import (
     parse_judge_output,
 )
 from app.pipeline.evidence_graph import build_evidence_graph, parse_relations
-from app.pipeline.graph import build_graph
+from app.pipeline.graph import build_graph, claim_evidence_summary
 from app.pipeline.models import Claim, Evidence, Relation
 
 
@@ -160,6 +160,65 @@ async def test_classify_relations_content_policy_empty(tmp_path, monkeypatch):
     )
     assert rels == []
     assert res is None
+
+
+def test_parse_relations_collects_multiple_json_arrays():
+    """模型常每条证据输出一行独立数组，只取第一个会丢掉其余关系。"""
+    content = (
+        '[{"evidence_id":"e1","relation":"support"}]\n'
+        '[{"evidence_id":"e2","relation":"contradict"}]\n'
+        '[{"evidence_id":"e3","relation":"neutral"}]'
+    )
+    rels = parse_relations(content, "c1", {"e1", "e2", "e3"})
+    assert [(r.evidence_id, r.relation) for r in rels] == [
+        ("e1", "support"),
+        ("e2", "contradict"),
+        ("e3", "neutral"),
+    ]
+
+
+async def test_build_evidence_graph_fills_neutral_when_judgement_rejected(tmp_path, monkeypatch):
+    """判定被拒的断言：候选证据补中性边（不进裁决），图上不再是孤立点。"""
+    settings = Settings(_env_file=None, llm_cache_mode="off", llm_cache_dir=str(tmp_path))
+    client = LLMClient(settings)
+
+    async def fake_chat(role, messages, **kw):
+        raise _bad_request_error()
+
+    monkeypatch.setattr(client, "chat", fake_chat)
+    claims = [Claim(id="c1", text="x")]
+    evidences = [
+        Evidence(id="e1", title="t1", url="https://gov.cn/a", source_tier="official"),
+        Evidence(id="e2", title="t2", url="https://x.com/b", source_tier="social"),
+    ]
+    g, rels, results = await build_evidence_graph(client, claims, evidences, {"c1": ["e1", "e2"]})
+    assert results == []
+    assert {(r.evidence_id, r.relation) for r in rels} == {("e1", "neutral"), ("e2", "neutral")}
+    assert g.edges["c1", "e1"]["relation"] == "neutral"
+    assert g.edges["c1", "e1"]["weight"] == 0.0
+    # 中性边不进裁决汇总
+    summary = {s["claim_id"]: s for s in claim_evidence_summary(g)}
+    assert summary["c1"]["support"] == [] and summary["c1"]["contradict"] == []
+
+
+async def test_build_evidence_graph_fills_neutral_when_model_omits(tmp_path, monkeypatch):
+    """模型漏判的证据同样补中性边。"""
+    settings = Settings(_env_file=None, llm_cache_mode="off", llm_cache_dir=str(tmp_path))
+    client = LLMClient(settings)
+
+    async def fake_chat(role, messages, **kw):
+        return LLMResult(content='[{"evidence_id":"e1","relation":"support"}]', model="m")
+
+    monkeypatch.setattr(client, "chat", fake_chat)
+    claims = [Claim(id="c1", text="x")]
+    evidences = [
+        Evidence(id="e1", title="t1", url="https://gov.cn/a", source_tier="official"),
+        Evidence(id="e2", title="t2", url="https://x.com/b", source_tier="social"),
+    ]
+    g, rels, _ = await build_evidence_graph(client, claims, evidences, {"c1": ["e1", "e2"]})
+    assert g.edges["c1", "e1"]["relation"] == "support"
+    assert g.edges["c1", "e2"]["relation"] == "neutral"
+    assert g.edges["c1", "e2"]["weight"] == 0.0
 
 
 def _routing_client(tmp_path, monkeypatch, first_content, strong_content, calls, **overrides):

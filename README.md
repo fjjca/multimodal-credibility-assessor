@@ -163,6 +163,8 @@ curl http://localhost:8000/metrics      # Prometheus 文本 exposition，可直�
 | `llm_fallbacks_total` | Counter | role / from_model / to_model | 兜底候选切换次数 |
 | `llm_circuit_open_total` | Counter | role / model | 熔断触发次数 |
 | `llm_param_stripped_total` | Counter | role / model | 因模型不支持参数而剔除参数后重试的次数 |
+| `relation_judge_failed_total` | Counter | reason | 证据关系判定调用被拒的次数（reason=moderation / bad_request） |
+| `relation_unjudged_total` | Counter | reason | 未判定关系补中性边的数量（reason=judge_failed / model_omitted） |
 
 结构化日志走应用 logger（`credibility`），经根 JSON handler 输出到 stdout，事件含 `verify accepted/done/failed`、`stage done`、`llm retry`，字段如 `task_id / verdict / confidence / latency_s / total_tokens / stage / attempt / error`。容器里即 `docker logs` 可采的 JSON 行。
 
@@ -308,6 +310,22 @@ OCR 与图文一致性描述均正确，故取代 429 的 `glm-4.6v-flash` 上�
 - **文本路径零回归**：15 条文本种子的准确率/macro-F1 与修正前**逐位相同**（0.600 / 0.644）——无图即无 `uploaded` 节点、无检索 hint，代码路径不变。
 
 **代价（诚实口径）**：图像权重提到 1.0 后，**VLM 误判"不一致"会被放大**——图像断言的结论更依赖 VLM 取证质量，这是把"图像是这类断言的唯一判据"显式化的必然代价。合成集只有 6 条，0.833 即 5/6（未命中的 `mm06` 仍弃权），样本量小，结论用于**定性**（噪声消失、方向正确）而非宣称提升幅度。
+
+## 证据图上"只有一根线"：三条丢边路径与修法
+
+**现象（2026-11-22）**：一条 5 断言 / 14 证据的文本核查，证据图上只有 **1 条支持边** + 4 条同源虚线，其余 13 条证据是孤立点——看起来像"检索回来了但什么都没连上"。追下去不是前端画错，是**关系判定阶段丢边**，有三条独立路径：
+
+| 路径 | 根因 | 修法 |
+|---|---|---|
+| ① 解析只取第一个数组 | 模型常把每条证据写成独立的一行 JSON 数组（`[{"evidence_id":"e1",...}]` × N），而 `parse_relations` 用 `re.search(r"\[.*\]")` 只匹配了**第一个**数组，其余关系被静默丢弃 | 改成 `re.findall` 收集**全部**数组再逐项解析 |
+| ② 审核拒答整条断言丢光 | 智谱返回 `400 {"code":1301}`（内容审核），`classify_relations` 捕获后直接 `return [], None` → 该断言的候选证据**一条边都没有**，且全程无日志 | 如实记录（区分审核拒答 / 其它 400，见 `relation_judge_failed_total`），并给该断言的候选证据**补中性边** |
+| ③ 模型漏判 | 模型只对部分证据给出关系，其余没提 | 同样补中性边（`relation_unjudged_total{reason=model_omitted}`） |
+
+**中性边（`relation="neutral"`，权重 0）的定位**：只用于**可视化**，让"检索到但未判定/判为不相关"的证据在图上可见，不再是孤立点；**不进裁决**——裁判读的是 `claim_evidence_summary` 的支持/矛盾汇总，中性边既不进支持列表也不进矛盾列表，结论不受影响（`tests/test_graph.py::test_neutral_edges_do_not_reach_the_judge` 守住这条边界）。
+
+**修后同一条输入**：边数 5 → **19**（support 1 + neutral 14 + same_source 4），图上孤立节点 0 个；`/metrics` 里 `relation_judge_failed_total{reason="moderation"} 3`、`relation_unjudged_total{reason="judge_failed"} 9`，即"3 条断言被审核拒答、9 条关系未判定"这件事现在是**可见的**，而不是沉默地丢边。
+
+> 诚实口径：修的是**丢边**，不是判定质量。关系判定器本身偏保守（多数证据判为不相关/未判定），这属于模型行为，是另一条待办（换判定模型 / 改 prompt），本次未动。
 
 ## 参数兼容：模型不支持 thinking 时的自愈
 
