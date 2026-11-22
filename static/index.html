@@ -43,7 +43,10 @@
   .review-note { font-size: 12px; color: #f59e0b; margin: 6px 0; }
   .graphbox { margin-top: 14px; padding: 12px; background: #131a29; border: 1px solid #2a3348; border-radius: 8px; }
   .graphbox h3 { margin: 0 0 8px; font-size: 14px; }
-  #cy { height: 360px; background: #0f1420; border-radius: 6px; }
+  #cy { height: 420px; background: #0f1420; border-radius: 6px; }
+  .cy-tip { position: absolute; z-index: 30; max-width: 340px; padding: 7px 10px; background: #0b1220;
+    border: 1px solid #3b82f6; border-radius: 6px; color: #e6e9f0; font-size: 12px; line-height: 1.6;
+    pointer-events: none; display: none; box-shadow: 0 8px 20px rgba(0,0,0,.5); white-space: pre-wrap; }
   .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; font-size: 12px; color: #8b93a7; }
   .legend span { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; }
   .legend span.off { opacity: .35; text-decoration: line-through; }
@@ -161,16 +164,47 @@ function renderForensics(fr) {
 }
 
 const TIER_COLORS = { uploaded: "#38bdf8", official: "#22c55e", mainstream: "#84cc16", social: "#f59e0b", unknown: "#64748b" };
+// 标签用同色系但更亮的版本，未知来源的灰在深底上偏暗
+const TIER_TEXT_COLORS = { uploaded: "#7dd3fc", official: "#4ade80", mainstream: "#bef264", social: "#fbbf24", unknown: "#9aa6ba" };
 const TIER_LABELS = { uploaded: "用户图像", official: "官方", mainstream: "主流媒体", social: "社交", unknown: "未知" };
-const REL_COLORS = { support: "#22c55e", contradict: "#ef4444", same_source: "#64748b" };
-const REL_LABELS = { support: "支持", contradict: "矛盾", same_source: "同源" };
+const REL_COLORS = { support: "#22c55e", contradict: "#ef4444", same_source: "#64748b", neutral: "#3f4a63" };
+const REL_LABELS = { support: "支持", contradict: "矛盾", same_source: "同源", neutral: "不相关/未判定" };
+
+// 图上标签按宽度换行显示（不截断）；超长标题最多 4 行，超出部分记省略号。
+// 行数参与纵向排布，避免换行后标签互相叠压。
+const LABEL_FONT = 11;
+const LABEL_MAX_W = 110;
+const LABEL_MAX_LINES = 4;
+const EM_PER_LINE = LABEL_MAX_W / LABEL_FONT;
+const WIDE_CHAR = /[\u1100-\u115F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6]/;
+const emLen = (s) => [...String(s == null ? "" : s)].reduce((a, ch) => a + (WIDE_CHAR.test(ch) ? 1 : 0.55), 0);
+const lineCount = (s) => Math.max(1, Math.ceil(emLen(s) / EM_PER_LINE));
+const displayLabel = (s) => {
+  const t = String(s == null ? "" : s).replace(/\s+/g, " ").trim();
+  const budget = LABEL_MAX_LINES * EM_PER_LINE;
+  if (emLen(t) <= budget) return t;
+  let out = "", acc = 0;
+  for (const ch of t) {
+    const w = WIDE_CHAR.test(ch) ? 1 : 0.55;
+    if (acc + w > budget - 1) break;
+    out += ch;
+    acc += w;
+  }
+  return out + "…";
+};
+const nodeHeight = (n) => {
+  const d = n.data || {};
+  const lines = lineCount(displayLabel(d.label || d.id));
+  return 28 + 8 + lines * LABEL_FONT * 1.3;
+};
+let cyTip = null;
 
 function renderGraph(elements, evidenceChain) {
   if (!elements || !elements.nodes || !elements.nodes.length) return null;
   const box = document.createElement("div");
   box.className = "graphbox";
   const h = document.createElement("h3");
-  h.textContent = "证据图（断言 ↔ 证据）· 点击节点/边查看详情，图例可过滤";
+  h.textContent = "证据图（断言 ↔ 证据）· 悬停看完整标签，点击节点/边看详情，图例可过滤";
   const cyDiv = document.createElement("div");
   cyDiv.id = "cy";
 
@@ -184,7 +218,8 @@ function renderGraph(elements, evidenceChain) {
     return b;
   };
   const fitBtn = mkBtn("适应画布");
-  const layoutBtn = mkBtn("重新布局");
+  const layoutBtn = mkBtn("自动布局");
+  const colBtn = mkBtn("两列布局");
   const chain = (evidenceChain || [])
     .map((c) => (typeof c === "string" ? c : c && c.id))
     .filter(Boolean);
@@ -224,7 +259,7 @@ function renderGraph(elements, evidenceChain) {
   let picked = null;
   let chainOn = false;
 
-  const LAYOUT = { name: "cose", animate: false, nodeRepulsion: 8000, idealEdgeLength: 80 };
+  const LAYOUT = { name: "cose", animate: false, nodeRepulsion: 20000, idealEdgeLength: 130, padding: 40 };
   const otherEnd = (e, n) => (e.source().same(n) ? e.target() : e.source());
 
   function applyFilters() {
@@ -339,38 +374,122 @@ function renderGraph(elements, evidenceChain) {
 
   // 容器须先入 DOM 且有尺寸，Cytoscape 才能正确布局
   requestAnimationFrame(() => {
+    const raw = (elements.nodes || []).map((n) => {
+      const d = n.data || {};
+      return { kind: d.kind, data: { ...d, display: displayLabel(d.label || d.id) } };
+    });
+
+    // 断言 ↔ 证据是天然二分图，用两列布局代替力导向：左列断言、右列证据。
+    // 标签完整换行显示，纵向间距按各节点实际行数累加，避免换行后互相叠压
+    const claimList = raw.filter((n) => n.kind === "claim");
+    const evList = raw.filter((n) => n.kind === "evidence");
+    const GAP = 12;
+    const colHeight = (list) => list.reduce((a, n) => a + nodeHeight(n) + GAP, 0);
+    const H = Math.max(360, Math.ceil(Math.max(colHeight(claimList), colHeight(evList))));
+    cyDiv.style.height = `${H}px`;
+    const W = cyDiv.clientWidth || 680;
+    const place = (list, x) => {
+      let y = (H - colHeight(list)) / 2;
+      list.forEach((n) => {
+        const h = nodeHeight(n);
+        y += h / 2;
+        n.position = { x, y };
+        y += h / 2 + GAP;
+      });
+    };
+    place(claimList, W * 0.18);
+    place(evList, W * 0.74);
+    // preset 布局读的是元素顶层的 position，不能塞进 data
+    const nodes = raw.map((n) => ({ data: n.data, position: n.position }));
+
     cy = cytoscape({
       container: cyDiv,
-      elements: { nodes: elements.nodes, edges: elements.edges },
+      elements: { nodes, edges: elements.edges || [] },
       style: [
         { selector: "node", style: {
-          label: "data(label)", "text-wrap": "wrap", "text-max-width": "110px",
-          "font-size": "10px", color: "#c3c9d6", "text-valign": "bottom", "text-halign": "center",
-          "text-margin-y": 4, width: 34, height: 34, "border-width": 1, "border-color": "#2a3348",
+          label: "data(display)", "text-wrap": "wrap", "text-max-width": `${LABEL_MAX_W}px`,
+          "font-size": `${LABEL_FONT}px`, color: "#dbe1ec", "text-valign": "bottom", "text-halign": "center",
+          "text-margin-y": 6, "line-height": 1.25,
+          "text-background-color": "#0f1420", "text-background-opacity": 0.88,
+          "text-background-padding": "2px", "text-background-shape": "roundrectangle",
+          width: 28, height: 28, "border-width": 1, "border-color": "#2a3348",
         } },
-        { selector: 'node[kind="claim"]', style: { shape: "ellipse", "background-color": "#3b82f6" } },
+        { selector: 'node[kind="claim"]', style: { shape: "ellipse", "background-color": "#3b82f6",
+          color: "#bfdbfe" } },
         { selector: 'node[kind="evidence"]', style: { shape: "round-rectangle",
-          "background-color": (ele) => TIER_COLORS[ele.data("source_tier")] || TIER_COLORS.unknown } },
+          "background-color": (ele) => TIER_COLORS[ele.data("source_tier")] || TIER_COLORS.unknown,
+          color: (ele) => TIER_TEXT_COLORS[ele.data("source_tier")] || TIER_TEXT_COLORS.unknown } },
         { selector: "edge", style: { width: 1.5, "curve-style": "bezier", "line-color": "#64748b" } },
         { selector: 'edge[relation="support"]', style: {
           "line-color": REL_COLORS.support, width: (ele) => 1.5 + 3 * (ele.data("weight") || 0.5) } },
         { selector: 'edge[relation="contradict"]', style: {
           "line-color": REL_COLORS.contradict, width: (ele) => 1.5 + 3 * (ele.data("weight") || 0.5) } },
-        { selector: 'edge[relation="same_source"]', style: { "line-color": REL_COLORS.same_source, "line-style": "dashed" } },
+        { selector: 'edge[relation="same_source"]', style: { "line-color": REL_COLORS.same_source, "line-style": "dashed", opacity: 0.75 } },
+        { selector: 'edge[relation="neutral"]', style: { "line-color": REL_COLORS.neutral, width: 1, opacity: 0.6 } },
         { selector: ".dimmed", style: { opacity: 0.12 } },
         { selector: ".picked", style: { "border-width": 3, "border-color": "#e6e9f0" } },
         { selector: ".chain", style: { "border-width": 3, "border-color": "#f59e0b" } },
       ],
-      layout: LAYOUT,
+      layout: { name: "preset" },
     });
+    cy.fit(undefined, 30);
     cy.on("tap", "node", (evt) => pickNode(evt.target));
     cy.on("tap", "edge", (evt) => pickEdge(evt.target));
     cy.on("tap", (evt) => { if (evt.target === cy) clearPick(); });
+
+    // 悬停显示完整标签（图上只有截断后的短名）
+    if (cyTip) cyTip.remove();
+    cyTip = document.createElement("div");
+    cyTip.className = "cy-tip";
+    document.body.append(cyTip);
+    const tipText = (n) => {
+      const d = n.data();
+      const tier = d.kind === "evidence" ? `［${TIER_LABELS[d.source_tier] || "未知"}］` : "［断言］";
+      return `${tier}${d.label || d.id}`;
+    };
+    cy.on("mouseover", "node", (evt) => {
+      cyTip.textContent = tipText(evt.target);
+      cyTip.style.display = "block";
+    });
+    cy.on("mouseout", "node", () => { cyTip.style.display = "none"; });
+    cy.on("mousemove", (evt) => {
+      if (cyTip.style.display === "none") return;
+      const rect = cyDiv.getBoundingClientRect();
+      const p = evt.renderedPosition;
+      cyTip.style.left = `${rect.left + window.scrollX + p.x + 14}px`;
+      cyTip.style.top = `${rect.top + window.scrollY + p.y + 14}px`;
+    });
     applyFilters();
   });
 
+  const applyColumns = () => {
+    if (!cy) return;
+    const z = cy.zoom() || 1;
+    const W = cy.width() / z;
+    const H = cy.height() / z;
+    const GAP = 12;
+    const colHeight = (list) => list.reduce((a, n) => a + nodeHeight(n) + GAP, 0);
+    const place = (list, x) => {
+      let y = (H - colHeight(list)) / 2;
+      list.forEach((n) => {
+        const h = nodeHeight(n);
+        y += h / 2;
+        n.position({ x, y });
+        y += h / 2 + GAP;
+      });
+    };
+    place(cy.nodes().filter((n) => n.data("kind") === "claim"), W * 0.18);
+    place(cy.nodes().filter((n) => n.data("kind") === "evidence"), W * 0.74);
+    cy.fit(undefined, 30);
+  };
+
   fitBtn.addEventListener("click", () => cy && cy.fit(undefined, 30));
-  layoutBtn.addEventListener("click", () => cy && cy.layout(LAYOUT).run());
+  layoutBtn.addEventListener("click", () => {
+    if (!cy) return;
+    cy.nodes().positions(() => ({ x: Math.random() * cy.width(), y: Math.random() * cy.height() }));
+    cy.layout(LAYOUT).run();
+  });
+  colBtn.addEventListener("click", () => applyColumns());
   if (chainBtn) {
     chainBtn.addEventListener("click", () => {
       if (!cy) return;
@@ -479,12 +598,24 @@ function evLine(it, rel) {
   return line;
 }
 
+// 每条断言的中性边（未判定/不相关）数量：清单里只列支持/矛盾，
+// 但图上会画出中性边，不给计数会显得"图上有线、清单为空"
+function neutralCounts(p) {
+  const map = {};
+  for (const e of (p.graph_elements && p.graph_elements.edges) || []) {
+    if (!e.data || e.data.relation !== "neutral") continue;
+    map[e.data.source] = (map[e.data.source] || 0) + 1;
+  }
+  return map;
+}
+
 function renderReport(p) {
   const claimsSec = document.createElement("div");
   claimsSec.className = "rsection";
   const ch = document.createElement("h3");
   ch.textContent = "断言核查清单";
   claimsSec.append(ch);
+  const neutrals = neutralCounts(p);
   if (p.graph_summary && p.graph_summary.length) {
     for (const s of p.graph_summary) {
       const card = document.createElement("div");
@@ -497,11 +628,19 @@ function renderReport(p) {
       for (const [rel, items] of [["support", s.support], ["contradict", s.contradict]]) {
         for (const it of items || []) { any = true; card.append(evLine(it, rel)); }
       }
+      const nc = neutrals[s.claim_id] || 0;
       if (!any) {
         const none = document.createElement("div");
         none.className = "evnone";
-        none.textContent = "暂无支持/矛盾证据";
+        none.textContent = nc
+          ? `暂无支持/矛盾证据（另有 ${nc} 条检索到的证据未判定/不相关）`
+          : "暂无支持/矛盾证据";
         card.append(none);
+      } else if (nc) {
+        const note = document.createElement("div");
+        note.className = "evnone";
+        note.textContent = `另有 ${nc} 条检索到的证据未判定/不相关`;
+        card.append(note);
       }
       claimsSec.append(card);
     }
