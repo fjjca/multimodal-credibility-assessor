@@ -37,11 +37,25 @@ async def test_decompose_with_mock_llm(tmp_path, monkeypatch):
     client = LLMClient(settings)
 
     async def fake(provider, model, messages, params):
+        return '[{"text":"某帖子提到了甲"},{"text":"某帖子还提到了乙"}]', {}
+
+    monkeypatch.setattr(client, "_call_once", fake)
+    claims, result = await decompose(client, "某帖子提到了甲，也提到了乙", max_claims=5)
+    assert [c.text for c in claims] == ["某帖子提到了甲", "某帖子还提到了乙"]
+
+
+async def test_decompose_drops_claim_without_source_overlap(tmp_path, monkeypatch):
+    # 断言与原文没有实词级重合 = 拆解器把具体事实改写成了空话，丢掉它
+    settings = Settings(_env_file=None, llm_cache_mode="off", llm_cache_dir=str(tmp_path))
+    client = LLMClient(settings)
+
+    async def fake(provider, model, messages, params):
         return '[{"text":"断言A"},{"text":"断言B"}]', {}
 
     monkeypatch.setattr(client, "_call_once", fake)
-    claims, result = await decompose(client, "某帖子", max_claims=5)
-    assert [c.text for c in claims] == ["断言A", "断言B"]
+    claims, _ = await decompose(client, "某帖子", max_claims=5)
+    assert len(claims) == 1
+    assert claims[0].text == "某帖子"
 
 
 async def test_decompose_fallback_to_whole_text(tmp_path, monkeypatch):

@@ -86,6 +86,9 @@
   .argbody { font-size: 12px; color: #c3c9d6; white-space: pre-wrap; word-break: break-all; margin: 6px 0; max-height: 200px; overflow: auto; }
   .runinfo .kv { font-size: 12px; color: #c3c9d6; margin: 4px 0; }
   .runinfo .kv b { color: #8b93a7; font-weight: 600; }
+  .demo-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+  .demo-label { font-size: 12px; color: #8b93a7; }
+  .demo-note { margin-top: 8px; font-size: 12px; color: #f59e0b; }
 </style>
 </head>
 <body>
@@ -99,6 +102,14 @@
       <button id="submit" type="submit">开始核查</button>
     </div>
   </form>
+  <div class="demo-bar">
+    <span class="demo-label">演示</span>
+    <button class="gbtn" type="button" id="demoLive1">用示例①实时跑（图文矛盾→虚假）</button>
+    <button class="gbtn" type="button" id="demoLive2">用示例②实时跑（官方证据→可信）</button>
+    <button class="gbtn" type="button" id="demoSnap1">载入示例①快照（离线）</button>
+    <button class="gbtn" type="button" id="demoSnap2">载入示例②快照（离线）</button>
+  </div>
+  <div class="demo-note" id="demoHint"></div>
   <img id="preview" class="img-preview" alt="图像预览">
   <div class="timeline" id="timeline"></div>
   <div class="result" id="review"></div>
@@ -817,6 +828,56 @@ fileInput.addEventListener("change", () => {
     preview.style.display = "none";
   }
 });
+
+// 演示用：把示例图片塞进 file input（浏览器不允许直接设 value，只能走 DataTransfer）
+async function attachImage(url) {
+  const res = await fetch(url);
+  const blob = await res.blob();
+  const file = new File([blob], url.split("/").pop(), { type: blob.type });
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  fileInput.files = dt.files;
+  preview.src = URL.createObjectURL(file);
+  preview.style.display = "block";
+}
+
+const DEMO_CASES = {
+  1: {
+    text: "这张照片拍摄于2020年东京奥运会现场。",
+    image: "/demo_images/mm01.png",
+    snap: "/sample_result.json",
+    expect: "预期结论：虚假不实（图中是 PARIS 2024，与 2020 东京奥运会矛盾）",
+  },
+  2: {
+    text: "世卫组织建议成年人每周至少进行150分钟中等强度运动。",
+    image: "/demo_images/mm02.png",
+    snap: "/sample_result_supported.json",
+    expect: "预期结论：真实可信（WHO 官方指南 + 上传图像都支持）",
+  },
+};
+
+const demoHint = document.getElementById("demoHint");
+
+async function runDemoLive(n) {
+  const c = DEMO_CASES[n];
+  form.querySelector("textarea[name=text]").value = c.text;
+  await attachImage(c.image);
+  demoHint.textContent = `${c.expect}　正在实时跑批，约 1–2 分钟（依赖模型与检索接口）`;
+  form.requestSubmit();
+}
+
+async function loadDemoSnapshot(n) {
+  const c = DEMO_CASES[n];
+  const res = await fetch(c.snap);
+  const payload = await res.json();
+  showResult(`结论：${payload.verdict_label || payload.verdict}（离线快照，非本次实时跑批）`, payload);
+  demoHint.textContent = `${c.expect}　以上是一次真实跑批的结果快照，已固化在本地，断网或接口限流时照样能演示。`;
+}
+
+document.getElementById("demoLive1").addEventListener("click", () => runDemoLive(1));
+document.getElementById("demoLive2").addEventListener("click", () => runDemoLive(2));
+document.getElementById("demoSnap1").addEventListener("click", () => loadDemoSnapshot(1));
+document.getElementById("demoSnap2").addEventListener("click", () => loadDemoSnapshot(2));
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();

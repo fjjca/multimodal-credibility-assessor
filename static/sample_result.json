@@ -1,0 +1,370 @@
+{
+ "verdict": "refuted",
+ "verdict_label": "虚假不实",
+ "confidence": 1.0,
+ "confidence_raw": 1.0,
+ "reason": "证据img1明确显示照片内容为'PARIS 2024 EIFFEL TOWER OLYMPIC GAMES'，与所有断言在时间和地点上存在直接矛盾。",
+ "claims": [
+  {
+   "id": "c1",
+   "text": "这张照片拍摄于2020年"
+  },
+  {
+   "id": "c2",
+   "text": "照片拍摄地点为东京"
+  },
+  {
+   "id": "c3",
+   "text": "照片拍摄地点为东京奥运会现场"
+  }
+ ],
+ "evidence_chain": [
+  {
+   "id": "img1",
+   "title": "用户上传图像（VLM 取证）",
+   "url": "",
+   "source_tier": "uploaded"
+  }
+ ],
+ "graph": {
+  "n_claims": 3,
+  "n_evidence": 9,
+  "n_support": 0,
+  "n_contradict": 3,
+  "n_same_source": 1,
+  "n_neutral": 9
+ },
+ "graph_elements": {
+  "nodes": [
+   {
+    "data": {
+     "id": "c1",
+     "kind": "claim",
+     "label": "这张照片拍摄于2020年",
+     "source_tier": ""
+    }
+   },
+   {
+    "data": {
+     "id": "c2",
+     "kind": "claim",
+     "label": "照片拍摄地点为东京",
+     "source_tier": ""
+    }
+   },
+   {
+    "data": {
+     "id": "c3",
+     "kind": "claim",
+     "label": "照片拍摄地点为东京奥运会现场",
+     "source_tier": ""
+    }
+   },
+   {
+    "data": {
+     "id": "e1",
+     "kind": "evidence",
+     "label": "PARIS, FRANCE: Summer olympic game Paris 2024 black background. Official logo 2024 in Paris on white blanket dark Eiffel Tower in night. Black edit space, Vertical ratio 16:9 for smartphone. Stock Photo | Adobe Stock",
+     "source_tier": "unknown",
+     "url": "https://stock.adobe.com/images/paris-france-summer-olympic-game-paris-2024-black-background-official-logo-2024-in-paris-on-white-blanket-dark-eiffel-tower-in-night-black-edit-space-vertical-ratio-16-9-for-smartphone/546829629",
+     "content": "JPEG\n\n#### CATEGORY\n\n#### RESTRICTIONS\n\nEditorial use only\n\n#### CREDIT LINE\n\nkovop58 - stock.adobe.com [...] Get 10 Stock images with a free trial\n\nGet 10 Stock images with a free trial\n\n## PARIS, FRANCE: Summer olympic game Paris 2024 black background. Official logo 2024 in Paris on white blanket dark Eiffel Tower in night. Black edit space, ...\n\n# PARIS, FRANCE: Summer olympic game Paris 2024 black background. Official logo 2024 in Paris on white blanket dark Eiffel Tower in night. Black edit space, Vertical ratio 16:9 for smartphone.\n\nby kovop58\n\n#### DIMENSIONS\n\n5315 x 9449px\n\n#### FILE TYPE\n\nJPEG",
+     "score": 0.53767866
+    }
+   },
+   {
+    "data": {
+     "id": "e2",
+     "kind": "evidence",
+     "label": "Paris 2024 Olympics | Selfies, Eiffel Tower in the background, Zinédine Zidane in the grandstands: day three of the Champions Park in photos",
+     "source_tier": "unknown",
+     "url": "https://www.olympics.com/en/news/paris-2024-olympics-selfies-tour-eiffel-zinedine-zidane-day-three-champions-park-photos",
+     "content": "# Paris 2024 Olympics | Selfies, Eiffel Tower in the background, Zinédine Zidane in the grandstands: day three of the Champions Park in photos\n\nOn Thursday 1 August, the Champions Park of the Paris 2024 Olympic Games celebrated its third opening day. Set up to celebrate all the medallists in the competition, it once again lived up to expectations, offering magical moments in a picture-postcard setting between the Eiffel Tower and Place du Trocadéro. [...] PARIS, FRANCE - AUGUST 01: Men's Artistic Gymnastics gold medalist Wataru Tanigawa of Team Japan takes a selfie with fans on day six of the Olympic Games Paris 2024 at Champions Park on August 01, 2024 in Paris, France. (Photo by Arturo Holmes/Getty Images) [...] A show that once again lived up to expectations. Despite fears about the weather forecast, the Champions Park of the Paris 2024 Olympic Games held firm and was finally able to welcome the athletes and the public on Thursday 1 August. The thousands of spectators who flocked to the foot of the Eiffel Tower were able to cheer on some of the Olympic heroes.",
+     "score": 0.46259445
+    }
+   },
+   {
+    "data": {
+     "id": "e3",
+     "kind": "evidence",
+     "label": "Mark Edward Harris on Instagram: \"The Eiffel Tower with the Olympic rings. The stage is set for the Paris 2024 Summer Olympics. #Paris…\"",
+     "source_tier": "social",
+     "url": "https://www.instagram.com/p/C90qYveSCb9",
+     "content": "# Mark Edward Harris on Instagram: \"The Eiffel Tower with the Olympic rings. The stage is set for the Paris 2024 Summer Olympics. #Paris…\"\n\nThe Eiffel Tower with the Olympic rings. The stage is set for the Paris 2024 Summer Olympics. \n \n#Paris2024 #Olympics #EiffelTower #NikonUSA #rings\n\n[Image: Photo by Mark Edward Harris on July 24, 2024.] [...] - Author: @markedwardharrisphoto (Mark Edward Harris) (verified)\n- Posted: 2024-07-24T22:51:24+00:00\n- Type: feed\n- Location: Eiffel Tower\n- Tagged: @olympics, @toureiffelofficielle, @markedwardharrisphoto, @zumapress\n- Hashtags: #paris2024 #olympics #eiffeltower #nikonusa #rings\n- Likes: 136\n- Comments: 7",
+     "score": 0.41917235
+    }
+   },
+   {
+    "data": {
+     "id": "e4",
+     "kind": "evidence",
+     "label": "The Olympic Games™ on Instagram: \"We’re fast approaching. 🥹 The Olympic Rings are on the Eiffel Tower. @Paris2024, let’s do this!\"",
+     "source_tier": "social",
+     "url": "https://www.instagram.com/p/C76D2dxiVla",
+     "content": "[Image: Photo by The Olympic Games™ on June 07, 2024.]\n\n[Image: Photo by The Olympic Games™ on June 07, 2024.]\n\n[Image: Photo by The Olympic Games™ on June 07, 2024.]\n\n[Image: Photo by The Olympic Games™ on June 07, 2024.]\n\n[Image: Video by The Olympic Games™ on June 07, 2024.]\n\n- Author: @olympics (The Olympic Games™) (verified)\n- Posted: 2024-06-07T08:07:20+00:00\n- Type: carousel_container\n- Mentions: @paris2024\n- Likes: 217705\n- Comments: 22925\n- Slides: 8 [...] # The Olympic Games™ on Instagram: \"We’re fast approaching. 🥹 The Olympic Rings are on the Eiffel Tower. @Paris2024, let’s do this!\"\n\nWe’re fast approaching. 🥹\n\nThe Olympic Rings are on the Eiffel Tower. @Paris2024, let’s do this!\n\n[Image: Photo by The Olympic Games™ on June 07, 2024.]\n\n[Image: Photo by The Olympic Games™ on June 07, 2024.]\n\n[Image: Video by The Olympic Games™ on June 07, 2024.]\n\n[Image: Photo by The Olympic Games™ on June 07, 2024.]",
+     "score": 0.4027444
+    }
+   },
+   {
+    "data": {
+     "id": "e5",
+     "kind": "evidence",
+     "label": "PARIS UNVEIL NEW EIFFEL TOWER-INSPIRED 2024 OLYMPIC GAMES BID LOGO - Ficts",
+     "source_tier": "unknown",
+     "url": "https://www.sportmoviestv.net/en/paris-2024-unveil-new-eiffel-tower-inspired-2024-olympic-games-bid-logo",
+     "content": "The logo features the number 24 twisted into the shape of the Eiffel Tower, which is thought to reference the last time Paris hosted the Olympics in 1924, as well as their latest effort to host the Games in 2024.\n\nParis, which has previously hosted two Games, is competing against Budapest, Rome and Los Angeles for the 2024 Olympics.\n\nThe International Olympic Committee (IOC) will choose the host city in September 2017. [...] The Paris 2024 Olympic bid committee unveiled their new Eiffel Tower-inspired logo at a Ceremony in the French capital. The design, claimed to be a modern interpretation of the iconic landmark, was projected symbolically into the Arc de Triomphe in front of a crowd of spectators and city officials and simultaneously onto the town hall in Marseille.",
+     "score": 0.3774259
+    }
+   },
+   {
+    "data": {
+     "id": "e6",
+     "kind": "evidence",
+     "label": "Photos: Iconic Paris landmarks double up as Olympic venues | NBC Olympics",
+     "source_tier": "unknown",
+     "url": "https://www.nbcolympics.com/news/photos-iconic-paris-landmarks-double-olympic-venues",
+     "content": "A general view of the Eiffel Tower as the sun sets before a beach volleyball match during the 2024 Paris Olympics.\n\nAndrew Nelles-USA TODAY Sports\n\nTHE GRAND PALAIS  \nUnveiled in 1900 for the Paris Universal Exhibition, the Grand Palais is visible across swaths of Paris thanks to its sweeping glass roof. Paris 2024 fencing and taekwondo take place under its stunning nave.\n\nA general view at the fencing competition during the 2024 Paris Olympics at Grand Palais. [...] Andrew P. Scott-USA TODAY Sports\n\nINVALIDES  \nA long stretch of lawn by the Seine that ends with the Hotel des Invalides, a 17th century complex of buildings that began life as a military hospital and also includes Napoleon's tomb, Invalides usually plays host to Parisians drinking wine or tossing a frisbee. During the Games, it hosts archery, road cycling and track events.\n\nHotel des Invalides viewed from the Eiffel Tower at the 2024 Paris Olympics.\n\nRob Schumacher-USA TODAY Sports [...] As sunny weather returns to France, the Paris Olympics are placing some of the capital's most famous landmarks center stage. Here is a look at where you can watch the sporting events:\n\nEIFFEL TOWER  \nThe beach volleyball takes place against one of the most iconic backdrops in Olympics history, with the Eiffel Tower looming over the athletes as they compete in a temporary stadium built in the Champ de Mars park.",
+     "score": 0.4819262
+    }
+   },
+   {
+    "data": {
+     "id": "e7",
+     "kind": "evidence",
+     "label": "5812 Paris 2024 logo 免版税图片、库存照片和图像 | Shutterstock",
+     "source_tier": "unknown",
+     "url": "https://www.shutterstock.com/search/paris-2024-logo",
+     "content": "Paris, France - July 23, 2024 : Giant LED Olympic rings on the Eiffel Tower for the Paris 2024 summer Olympics\n\nParis, France. The Arc de Triomphe with the Paralympic symbol attached and the Paris Olympic flag. July 17, 2024.\n\nParis 2024 travel logo with Eiffel Tower. Travel concept in Paris city or France country with 2024 number. Vector illustration\n\n24 July 2024, France Paris, Olympic games. High quality photo, Eiffel tower with Olympic Games Logo [...] 彩色奥运会抽象弧形彩虹波孤立，彩色横幅条纹。Eps10\n\n法国巴黎— 2024年12月27日：法国兴业银行一家分行的入口。法国兴业银行是法国领先的银行之一，也是历史最悠久的银行之一\n\nParis, France. The Arc de Triomphe with the Paralympic symbol attached and the Paris Olympic flag. July 17, 2024.\n\nParis, France-June 22, 2024 : The view of Eiffel tower with Olympic rings of the Paris 2024 Olympic Games. it is the most visited monument in the world located in 7th district of Paris. [...] 地标和纪念碑\n奥运会\n公共建筑\n竞技场和体育场\n团队运动\n奥林匹克五环\n艾菲爾鐵塔\n2024年夏季奧林匹克運動會\n巴黎市政厅\n奧林匹克運動會\n\n下一步",
+     "score": 0.45947018
+    }
+   },
+   {
+    "data": {
+     "id": "e8",
+     "kind": "evidence",
+     "label": "In pictures: Paris Olympics are a feast for the eyes as iconic venues take centre stage - France 24",
+     "source_tier": "unknown",
+     "url": "https://www.france24.com/en/europe/20240731-in-pictures-paris-olympics-are-a-feast-for-the-eyes-as-iconic-venues-take-centre-stage",
+     "content": "# In pictures: Paris Olympics are a feast for the eyes as iconic venues take centre stage\n\nFrom our special correspondent - The sporting competitions at the Paris Olympic Games are being staged at some of France’s most emblematic locations: the Palace of Versailles, the former bastion of the French monarchy; the final resting place of Napoleon at Les Invalides; that most Parisian of monuments, the Eiffel Tower. Photographers have been happily capturing the spectacle. [...] The sporting line-up includes equestrian events at Versailles, fencing at the Grand Palais, beach volleyball at the Eiffel Tower, and breakdancing at the Place de la Concorde. The beauty of the city backdrop has provided an assist to photographers trying to capture iconic sporting moments.\n\nKeywords for this article",
+     "score": 0.43194354
+    }
+   },
+   {
+    "data": {
+     "id": "img1",
+     "kind": "evidence",
+     "label": "用户上传图像（VLM 取证）",
+     "source_tier": "uploaded",
+     "url": "",
+     "content": "OCR：PARIS 2024 EIFFEL TOWER OLYMPIC GAMES\n图像描述：图片为一张纯色背景的图像，中央有黑色大写字母文字，内容为三行：第一行为'PARIS 2024'，第二行为'EIFFEL TOWER'，第三行为'OLYMPIC GAMES'。\n取证备注：图片文字明确显示为'PARIS 2024'，与帖子文本中'2020年东京奥运会'存在明显时间与地点冲突，属于旧图新用或篡改迹象。",
+     "score": 0.0
+    }
+   }
+  ],
+  "edges": [
+   {
+    "data": {
+     "id": "edge0",
+     "source": "c1",
+     "target": "e1",
+     "relation": "neutral",
+     "weight": 0.0
+    }
+   },
+   {
+    "data": {
+     "id": "edge1",
+     "source": "c1",
+     "target": "e2",
+     "relation": "neutral",
+     "weight": 0.0
+    }
+   },
+   {
+    "data": {
+     "id": "edge2",
+     "source": "c1",
+     "target": "e3",
+     "relation": "neutral",
+     "weight": 0.0
+    }
+   },
+   {
+    "data": {
+     "id": "edge3",
+     "source": "c1",
+     "target": "img1",
+     "relation": "contradict",
+     "weight": 1.0
+    }
+   },
+   {
+    "data": {
+     "id": "edge4",
+     "source": "c2",
+     "target": "e2",
+     "relation": "neutral",
+     "weight": 0.0
+    }
+   },
+   {
+    "data": {
+     "id": "edge5",
+     "source": "c2",
+     "target": "e4",
+     "relation": "neutral",
+     "weight": 0.0
+    }
+   },
+   {
+    "data": {
+     "id": "edge6",
+     "source": "c2",
+     "target": "e5",
+     "relation": "neutral",
+     "weight": 0.0
+    }
+   },
+   {
+    "data": {
+     "id": "edge7",
+     "source": "c2",
+     "target": "img1",
+     "relation": "contradict",
+     "weight": 1.0
+    }
+   },
+   {
+    "data": {
+     "id": "edge8",
+     "source": "c3",
+     "target": "e6",
+     "relation": "neutral",
+     "weight": 0.0
+    }
+   },
+   {
+    "data": {
+     "id": "edge9",
+     "source": "c3",
+     "target": "e7",
+     "relation": "neutral",
+     "weight": 0.0
+    }
+   },
+   {
+    "data": {
+     "id": "edge10",
+     "source": "c3",
+     "target": "e8",
+     "relation": "neutral",
+     "weight": 0.0
+    }
+   },
+   {
+    "data": {
+     "id": "edge11",
+     "source": "c3",
+     "target": "img1",
+     "relation": "contradict",
+     "weight": 1.0
+    }
+   },
+   {
+    "data": {
+     "id": "edge12",
+     "source": "e3",
+     "target": "e4",
+     "relation": "same_source",
+     "weight": 0.5
+    }
+   }
+  ]
+ },
+ "graph_summary": [
+  {
+   "claim_id": "c1",
+   "text": "这张照片拍摄于2020年",
+   "support": [],
+   "contradict": [
+    {
+     "evidence_id": "img1",
+     "title": "用户上传图像（VLM 取证）",
+     "url": "",
+     "source_tier": "uploaded",
+     "weight": 1.0
+    }
+   ]
+  },
+  {
+   "claim_id": "c2",
+   "text": "照片拍摄地点为东京",
+   "support": [],
+   "contradict": [
+    {
+     "evidence_id": "img1",
+     "title": "用户上传图像（VLM 取证）",
+     "url": "",
+     "source_tier": "uploaded",
+     "weight": 1.0
+    }
+   ]
+  },
+  {
+   "claim_id": "c3",
+   "text": "照片拍摄地点为东京奥运会现场",
+   "support": [],
+   "contradict": [
+    {
+     "evidence_id": "img1",
+     "title": "用户上传图像（VLM 取证）",
+     "url": "",
+     "source_tier": "uploaded",
+     "weight": 1.0
+    }
+   ]
+  }
+ ],
+ "forensics": {
+  "ocr_text": "PARIS 2024 EIFFEL TOWER OLYMPIC GAMES",
+  "description": "图片为一张纯色背景的图像，中央有黑色大写字母文字，内容为三行：第一行为'PARIS 2024'，第二行为'EIFFEL TOWER'，第三行为'OLYMPIC GAMES'。",
+  "overall": "inconsistent",
+  "consistency": [
+   {
+    "claim_id": "c1",
+    "consistency": "inconsistent",
+    "note": "图片文字明确显示为'PARIS 2024'，与断言c1中'2020年'不符。"
+   },
+   {
+    "claim_id": "c2",
+    "consistency": "inconsistent",
+    "note": "图片文字明确显示为'PARIS 2024'，地点为巴黎，与断言c2中'东京'不符。"
+   },
+   {
+    "claim_id": "c3",
+    "consistency": "inconsistent",
+    "note": "图片文字明确显示为'PARIS 2024'，地点为巴黎，且提及'OLYMPIC GAMES'但非'东京奥运会'，与断言c3中'东京奥运会现场'不符。"
+   }
+  ],
+  "notes": "图片文字明确显示为'PARIS 2024'，与帖子文本中'2020年东京奥运会'存在明显时间与地点冲突，属于旧图新用或篡改迹象。",
+  "image": "05a06161289e_mm01.png"
+ },
+ "prosecutor": "断言c1、c2和c3均与提供的证据矛盾，因此这些断言是虚假的或不可信的。",
+ "defender": "根据提供的证据，断言c1、c2和c3均不可信。证据img1显示照片上明确标注了'PARIS 2024 EIFFEL TOWER OLYMPIC GAMES'，这与断言中的'2020年东京'存在时间与地点上的冲突。因此，可以得出结论，照片并非拍摄于2020年东京，也不是东京奥运会现场。",
+ "escalated": false,
+ "human_review": false,
+ "judge_model": "glm-4.5-flash",
+ "usage": {
+  "total_tokens": 4805,
+  "n_calls": 8,
+  "cached": 0
+ },
+ "trace_id": "5b9618bb794f",
+ "_meta": {
+  "case_id": "mm01",
+  "input_text": "这张照片拍摄于2020年东京奥运会现场。",
+  "input_image": "demo_images/mm01.png",
+  "note": "图文矛盾 → 判定虚假：图片内容是 PARIS 2024，帖子却说是 2020 年东京奥运会",
+  "captured_at": "2026-11-24T18:30:33",
+  "disclaimer": "离线快照：一次真实跑批的结果，已固化到本地，断网也能演示；不是本次实时跑批。"
+ }
+}

@@ -32,6 +32,8 @@ FORENSICS_SYSTEM = (
     "3) 图文一致性：逐条判断图片与每个断言的关系——consistent=图片支持该断言；"
     "inconsistent=图片与该断言矛盾（时间/地点/人物/事件不符、移花接木、旧图新用）；"
     "uncertain=图片不足以判断该断言；"
+    "另外必须与帖子原文直接对照：若图片里的时间、地点、事件、机构与原文明写的内容冲突，"
+    "无论断言表述是否笼统，都要判为 inconsistent；"
     "4) 篡改迹象：若发现明显拼接/PS/旧图新用迹象在 notes 说明，否则空字符串。"
     "只输出 JSON：{\"ocr_text\":\"...\",\"description\":\"...\",\"overall\":\"consistent|inconsistent|uncertain\","
     "\"claims\":[{\"claim_id\":\"c1\",\"consistency\":\"...\",\"note\":\"...\"}],\"notes\":\"...\"}。"

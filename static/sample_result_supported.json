@@ -1,0 +1,205 @@
+{
+ "verdict": "supported",
+ "verdict_label": "真实可信",
+ "confidence": 0.95,
+ "confidence_raw": 0.95,
+ "reason": "多个权威来源包括世卫组织官方指南、CDC官方建议和用户上传的WHO指南图像均支持断言内容",
+ "claims": [
+  {
+   "id": "c1",
+   "text": "世卫组织建议成年人每周至少进行150分钟中等强度运动。"
+  }
+ ],
+ "evidence_chain": [
+  {
+   "id": "e1",
+   "title": "World Health Organization 2020 guidelines on physical activity and sedentary behaviour",
+   "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7719906",
+   "source_tier": "official"
+  },
+  {
+   "id": "e3",
+   "title": "Adult Activity: An Overview | Physical Activity Basics | CDC",
+   "url": "https://www.cdc.gov/physical-activity-basics/guidelines/adults.html",
+   "source_tier": "official"
+  },
+  {
+   "id": "img1",
+   "title": "用户上传图像（VLM 取证）",
+   "url": "",
+   "source_tier": "uploaded"
+  }
+ ],
+ "graph": {
+  "n_claims": 1,
+  "n_evidence": 4,
+  "n_support": 4,
+  "n_contradict": 0,
+  "n_same_source": 0,
+  "n_neutral": 0
+ },
+ "graph_elements": {
+  "nodes": [
+   {
+    "data": {
+     "id": "c1",
+     "kind": "claim",
+     "label": "世卫组织建议成年人每周至少进行150分钟中等强度运动。",
+     "source_tier": ""
+    }
+   },
+   {
+    "data": {
+     "id": "e1",
+     "kind": "evidence",
+     "label": "World Health Organization 2020 guidelines on physical activity and sedentary behaviour",
+     "source_tier": "official",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7719906",
+     "content": "The evidence confirms the value of participating in regular physical activity to achieve health benefits across all ages and abilities. Further it supports key messages that some physical activity is better than none and that more is better for optimal health outcomes. More specifically, the evidence reaffirms all adults should undertake regular physical activity and should aim to achieve at least 150 min of moderate-intensity, or 75 min of vigorous-intensity aerobic physical activity per week, [...] The new guidelines address children, adolescents, adults, older adults and include new specific recommendations for pregnant and postpartum women and people living with chronic conditions or disability. All adults should undertake 150–300 min of moderate-intensity, or 75–150 min of vigorous-intensity physical activity, or some equivalent combination of moderate-intensity and vigorous-intensity aerobic physical activity, per week. Among children and adolescents, an average of 60 min/day of [...] now specify a target range of 150–300 min of moderate-intensity and 75–150 min of vigorous-intensity physical activity, compared with the previous guidelines that focused on achieving at least 150 min of moderate-intensity or 75 min of vigorous-intensity activity per week. This change acknowledges that there is a range of physical activity which captures the maximal risk reductions for health outcomes associated with physical activity and going beyond this range does not appreciably further",
+     "score": 0.7789858
+    }
+   },
+   {
+    "data": {
+     "id": "e2",
+     "kind": "evidence",
+     "label": "Physical activity guidelines for adults aged 19 to 64 - NHS",
+     "source_tier": "unknown",
+     "url": "https://www.nhs.uk/live-well/exercise/physical-activity-guidelines-for-adults-aged-19-to-64",
+     "content": "do strengthening activities that work all the major muscle groups (legs, hips, back, abdomen, chest, shoulders and arms) on at least 2 days a week\n do at least 150 minutes of moderate intensity activity a week or 75 minutes of vigorous intensity activity a week\n spread exercise evenly over 4 to 5 days a week, or every day\n reduce time spent sitting or lying down and break up long periods of not moving with some activity\n\nYou can also achieve your weekly activity target with: [...] brisk walking\n water aerobics\n riding a bike\n dancing\n doubles tennis\n pushing a lawn mower\n hiking\n rollerblading\n\n## What counts as vigorous activity?\n\nVigorous intensity activity makes you breathe hard and fast. If you're working at this level, you will not be able to say more than a few words without pausing for breath.\n\nIn general, 75 minutes of vigorous intensity activity a week can give similar health benefits to 150 minutes of moderate intensity activity. [...] You can do activities that strengthen your muscles on the same or different days as your aerobic activity – whatever's best for you.\n\nMuscle-strengthening exercises are not always an aerobic activity, so you'll need to do them as well as your 150 minutes of aerobic activity.\n\n## Take the healthy choices quiz",
+     "score": 0.64646024
+    }
+   },
+   {
+    "data": {
+     "id": "e3",
+     "kind": "evidence",
+     "label": "Adult Activity: An Overview | Physical Activity Basics | CDC",
+     "source_tier": "official",
+     "url": "https://www.cdc.gov/physical-activity-basics/guidelines/adults.html",
+     "content": "## Key points\n\n- Physical activity is one of the most important things you can do for your health.\n- Adults need at least 150 minutes of moderate-intensity physical activity a week, such as 30 minutes a day, 5 days a week.\n- Adults also need 2 days of muscle-strengthening activity each week.\n\nTwo adults walking up stairs with a dog on a leash.\n\n## Recommendations for adults [...] According to the current Physical Activity Guidelines for Americans, adults need 150 minutes of moderate-intensity physical activity a week. This can also be 75 minutes of vigorous-intensity or an equivalent combination of moderate- and vigorous-intensity physical activity. In addition, adults need at least 2 days of muscle-strengthening activity each week. [...] We know 150 minutes of physical activity each week sounds like a lot, but you don't have to do it all at once. It could be 30 minutes a day, 5 days a week. You can spread your activity out during the week and break it up into smaller chunks of time. See steps for getting started.\n\n### Recommended levels for health benefits\n\nExample 1\n\nModerate-intensity aerobic activity (such as brisk walking) for 150 minutes every week (for example, 30 minutes a day, 5 days a week).\n\nAND",
+     "score": 0.58450836
+    }
+   },
+   {
+    "data": {
+     "id": "img1",
+     "kind": "evidence",
+     "label": "用户上传图像（VLM 取证）",
+     "source_tier": "uploaded",
+     "url": "",
+     "content": "OCR：WHO GUIDELINE 150 minutes moderate exercise per week\n图像描述：一张白色背景的图片，中央有黑色文字，内容为 'WHO GUIDELINE'、'150 minutes'、'moderate exercise' 和 'per week'，字体为无衬线体。",
+     "score": 0.0
+    }
+   }
+  ],
+  "edges": [
+   {
+    "data": {
+     "id": "edge0",
+     "source": "c1",
+     "target": "e1",
+     "relation": "support",
+     "weight": 1.0
+    }
+   },
+   {
+    "data": {
+     "id": "edge1",
+     "source": "c1",
+     "target": "e2",
+     "relation": "support",
+     "weight": 0.5
+    }
+   },
+   {
+    "data": {
+     "id": "edge2",
+     "source": "c1",
+     "target": "e3",
+     "relation": "support",
+     "weight": 1.0
+    }
+   },
+   {
+    "data": {
+     "id": "edge3",
+     "source": "c1",
+     "target": "img1",
+     "relation": "support",
+     "weight": 1.0
+    }
+   }
+  ]
+ },
+ "graph_summary": [
+  {
+   "claim_id": "c1",
+   "text": "世卫组织建议成年人每周至少进行150分钟中等强度运动。",
+   "support": [
+    {
+     "evidence_id": "e1",
+     "title": "World Health Organization 2020 guidelines on physical activity and sedentary behaviour",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7719906",
+     "source_tier": "official",
+     "weight": 1.0
+    },
+    {
+     "evidence_id": "e2",
+     "title": "Physical activity guidelines for adults aged 19 to 64 - NHS",
+     "url": "https://www.nhs.uk/live-well/exercise/physical-activity-guidelines-for-adults-aged-19-to-64",
+     "source_tier": "unknown",
+     "weight": 0.5
+    },
+    {
+     "evidence_id": "e3",
+     "title": "Adult Activity: An Overview | Physical Activity Basics | CDC",
+     "url": "https://www.cdc.gov/physical-activity-basics/guidelines/adults.html",
+     "source_tier": "official",
+     "weight": 1.0
+    },
+    {
+     "evidence_id": "img1",
+     "title": "用户上传图像（VLM 取证）",
+     "url": "",
+     "source_tier": "uploaded",
+     "weight": 1.0
+    }
+   ],
+   "contradict": []
+  }
+ ],
+ "forensics": {
+  "ocr_text": "WHO GUIDELINE 150 minutes moderate exercise per week",
+  "description": "一张白色背景的图片，中央有黑色文字，内容为 'WHO GUIDELINE'、'150 minutes'、'moderate exercise' 和 'per week'，字体为无衬线体。",
+  "overall": "consistent",
+  "consistency": [
+   {
+    "claim_id": "c1",
+    "consistency": "consistent",
+    "note": ""
+   }
+  ],
+  "notes": "",
+  "image": "a4444f0654c1_mm02.png"
+ },
+ "prosecutor": "断言c1中提到的世卫组织建议成年人每周至少进行150分钟中等强度运动的内容可能存在误导性，因为提供的支持证据中存在来源不可靠的情况。",
+ "defender": "断言c1的真实可信性得到了多个权威来源的支持。世卫组织在其2020年的运动和久坐行为指南中明确指出，定期参与体育活动对于所有年龄段和能力的健康益处至关重要，并支持了每周至少150分钟中等强度运动的建议。此外，美国疾病控制与预防中心（CDC）也提供了类似的信息，强调成年人每周至少需要进行150分钟的中等强度运动。用户上传的图像直接展示了世卫组织的具体指南，进一步证实了这一建议。尽管第二个证据来源的权重较低，但它也提供了额外的支持。因此，可以认为断言c1是真实可信的。",
+ "escalated": false,
+ "human_review": false,
+ "judge_model": "glm-4.5-flash",
+ "usage": {
+  "total_tokens": 3115,
+  "n_calls": 6,
+  "cached": 0
+ },
+ "trace_id": "4235a24970fb",
+ "_meta": {
+  "case_id": "mm02",
+  "input_text": "世卫组织建议成年人每周至少进行150分钟中等强度运动。",
+  "input_image": "demo_images/mm02.png",
+  "note": "官方证据支持 → 判定可信：WHO 指南与上传图像都支持该说法",
+  "captured_at": "2026-11-24T18:31:13",
+  "disclaimer": "离线快照：一次真实跑批的结果，已固化到本地，断网也能演示；不是本次实时跑批。"
+ }
+}

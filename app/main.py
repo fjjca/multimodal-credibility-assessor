@@ -35,6 +35,12 @@ async def metrics():
 
 
 app.mount(
+    "/demo_images",
+    StaticFiles(directory=Path(__file__).resolve().parent.parent / "data" / "demo_images"),
+    name="demo_images",
+)
+
+app.mount(
     "/",
     StaticFiles(directory=Path(__file__).resolve().parent.parent / "static", html=True),
     name="static",
