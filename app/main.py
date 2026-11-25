@@ -34,10 +34,13 @@ async def metrics():
     return Response(content=body, media_type=content_type)
 
 
+_DEMO_PHOTOS = Path(__file__).resolve().parent.parent / "data" / "demo_photos"
+_DEMO_PHOTOS.mkdir(parents=True, exist_ok=True)
+
 app.mount(
-    "/demo_images",
-    StaticFiles(directory=Path(__file__).resolve().parent.parent / "data" / "demo_images"),
-    name="demo_images",
+    "/demo_photos",
+    StaticFiles(directory=_DEMO_PHOTOS),
+    name="demo_photos",
 )
 
 app.mount(

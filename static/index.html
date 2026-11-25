@@ -105,7 +105,7 @@
   <div class="demo-bar">
     <span class="demo-label">演示</span>
     <button class="gbtn" type="button" id="demoLive1">用示例①实时跑（图文矛盾→虚假）</button>
-    <button class="gbtn" type="button" id="demoLive2">用示例②实时跑（官方证据→可信）</button>
+    <button class="gbtn" type="button" id="demoLive2">用示例②实时跑（图文一致→可信）</button>
     <button class="gbtn" type="button" id="demoSnap1">载入示例①快照（离线）</button>
     <button class="gbtn" type="button" id="demoSnap2">载入示例②快照（离线）</button>
   </div>
@@ -832,6 +832,7 @@ fileInput.addEventListener("change", () => {
 // 演示用：把示例图片塞进 file input（浏览器不允许直接设 value，只能走 DataTransfer）
 async function attachImage(url) {
   const res = await fetch(url);
+  if (!res.ok) throw new Error(`示例图片缺失（${res.status}）`);
   const blob = await res.blob();
   const file = new File([blob], url.split("/").pop(), { type: blob.type });
   const dt = new DataTransfer();
@@ -843,16 +844,16 @@ async function attachImage(url) {
 
 const DEMO_CASES = {
   1: {
-    text: "这张照片拍摄于2020年东京奥运会现场。",
-    image: "/demo_images/mm01.png",
+    text: "这张照片拍摄于2024年上海马拉松比赛的现场。",
+    image: "/demo_photos/beijing_marathon.jpg",
     snap: "/sample_result.json",
-    expect: "预期结论：虚假不实（图中是 PARIS 2024，与 2020 东京奥运会矛盾）",
+    expect: "预期结论：虚假不实（图中拱门写着 2024 北京半程马拉松，与帖子说的上海矛盾）",
   },
   2: {
-    text: "世卫组织建议成年人每周至少进行150分钟中等强度运动。",
-    image: "/demo_images/mm02.png",
+    text: "这张照片拍摄于巴黎埃菲尔铁塔下。",
+    image: "/demo_photos/paris_eiffel.jpg",
     snap: "/sample_result_supported.json",
-    expect: "预期结论：真实可信（WHO 官方指南 + 上传图像都支持）",
+    expect: "预期结论：真实可信（图中就是埃菲尔铁塔，检索也证实它位于巴黎）",
   },
 };
 
@@ -860,8 +861,13 @@ const demoHint = document.getElementById("demoHint");
 
 async function runDemoLive(n) {
   const c = DEMO_CASES[n];
+  try {
+    await attachImage(c.image);
+  } catch (err) {
+    demoHint.textContent = `${c.expect}　示例图片缺失，请先运行 scripts/fetch_demo_photos 下载；离线快照按钮不受影响。`;
+    return;
+  }
   form.querySelector("textarea[name=text]").value = c.text;
-  await attachImage(c.image);
   demoHint.textContent = `${c.expect}　正在实时跑批，约 1–2 分钟（依赖模型与检索接口）`;
   form.requestSubmit();
 }

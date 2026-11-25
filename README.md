@@ -60,9 +60,18 @@ cp .env.example .env                             # 填入 key
 
 ### 演示模式（不消耗接口额度）
 
-首页顶部有四个演示按钮，前两个用 `data/multimodal_demo.jsonl` 的图文用例**实时跑批**，后两个载入**离线快照**：
+首页顶部有四个演示按钮，前两个用 `data/multimodal_photo_demo.jsonl` 的**真实网络图片**用例**实时跑批**，后两个载入**离线快照**：
+
+| 按钮 | 用例 | 图 | 预期结论 |
+|---|---|---|---|
+| ① | 「这张照片拍摄于2020年东京奥运会现场。」 | 巴黎埃菲尔铁塔 | 虚假不实 |
+| ② | 「这张照片拍摄于2024年北京半程马拉松比赛的现场。」 | 2024 北京半程马拉松 | 真实可信 |
 
 - 「载入示例①快照（离线）」/「②」：读 `static/sample_result.json`、`static/sample_result_supported.json`——各是一次真实跑批的完整结果（取证卡 + 证据图 + 证据链），断网或接口限流时照样能演示，页面上明确标注「离线快照，非本次实时跑批」。
+- 演示图片在 `data/demo_photos/`（由 `app/main.py` 挂到 `/demo_photos`）。这批图是**真实网络照片**，来自国内图片站点的公开 CDN、非开放许可，因此**不入版本库**（见 `.gitignore`）；来源与复现方式见 `data/demo_photos/SOURCES.md` 与 `scripts/fetch_demo_photos.py`：
+  ```bash
+  .venv/Scripts/python -m scripts.fetch_demo_photos   # 重新拉取并归一化三张图
+  ```
 
 ## 配置说明
 
@@ -102,9 +111,12 @@ cp .env.example .env                             # 填入 key
 # 多模态合成用例（图像取证链路）
 ENABLE_RETRIEVAL=false LLM_CACHE_MODE=off \
   .venv/Scripts/python -m scripts.evaluate --data data/multimodal_demo.jsonl --system pipeline
+# 多模态真实图片用例（检索 on）
+LLM_CACHE_MODE=off \
+  .venv/Scripts/python -m scripts.evaluate --data data/multimodal_photo_demo.jsonl --system pipeline --out out/photo_v1
 ```
 
-数据集：`data/eval_seed.jsonl`（14 条设计文本断言）、`data/fakeddit_subset.jsonl`（100 条 Fakeddit 真实样本）、`data/multimodal_demo.jsonl`（6 条 Pillow 合成图文用例，`scripts/make_demo_images.py` 生成）。
+数据集：`data/eval_seed.jsonl`（14 条设计文本断言）、`data/fakeddit_subset.jsonl`（100 条 Fakeddit 真实样本）、`data/multimodal_demo.jsonl`（6 条 Pillow 合成图文用例，`scripts/make_demo_images.py` 生成）、`data/multimodal_photo_demo.jsonl`（6 条**真实网络照片**用例，3 张图 × 正反断言，图在 `data/demo_photos/`）。
 
 ### 结果
 
@@ -351,6 +363,25 @@ OCR 与图文一致性描述均正确，故取代 429 的 `glm-4.6v-flash` 上�
 
 **代价（诚实口径）**：锚点校验是启发式的——断言若用完全不同的词复述原文（而非摘录），会被误杀，此时回退到"原文整句当断言"，结果不至于错，但断言数会变少。
 
+## 第四个多模态修正：换成真实网络图片后，暴露的是 OCR 精度
+
+合成图（Pillow 画的文字卡）上的高准确率有天花板效应——字大、字少、无背景。换成**真实网络照片**后（`data/multimodal_photo_demo.jsonl`，3 张图 × 正反断言 = 6 条）：
+
+| id | 帖子文本 | 图里实际是什么 | 标签 | 实测 | |
+|---|---|---|---|---|---|
+| mp01 | 这张照片拍摄于2020年东京奥运会现场。 | 巴黎埃菲尔铁塔 | refuted | `refuted` 0.95 | ✅ |
+| mp02 | 这张照片拍摄于巴黎埃菲尔铁塔下。 | 巴黎埃菲尔铁塔 | supported | `supported` 0.90 | ✅ |
+| mp03 | 这张照片拍摄于2024年北京半程马拉松比赛的现场。 | 拱门写着 2024 北京半程马拉松 | supported | `supported` 0.90 | ✅ |
+| mp04 | 这张照片拍摄于2024年上海马拉松比赛的现场。 | 北京半程马拉松 | refuted | `refuted` 1.00 | ✅ |
+| mp05 | 这张小票显示本次消费合计金额为150元。 | 小票合计金额 **150.00** | supported | `refuted` 1.00 | ❌ |
+| mp06 | 这张小票显示本次消费合计金额为1500元。 | 小票合计金额 150.00 | refuted | `refuted` 1.00 | ✅ |
+
+**跑批口径**（`out/photo_v1/`，检索 on、cache off、并发 3）：准确率 **0.833**、macro-F1 **0.829**、ECE 0.125、弃权 0.00，平均 151 s/条，46,629 tokens。
+
+**mp05 是真实失败，标签没错**：小票上确实印着"合计金额 150.00"，但 VLM 把数字读成了 136.90，于是"合计金额与断言不符"被判成矛盾。结论是——**通用 VLM 在密集小字票据上的数字 OCR 不可靠**，这类场景需要 OCR 专用引擎（PaddleOCR / 云 OCR）而不是让 VLM 硬读。
+
+诚实口径：n=6 太小，只用于**暴露短板**，不作为泛化指标；合成集 6/6 与真实图 5/6 放在一起看，才说明"合成数据高准确率 ≠ 真实场景高准确率"。
+
 
 
 **现象（2026-11-22）**：一条 5 断言 / 14 证据的文本核查，证据图上只有 **1 条支持边** + 4 条同源虚线，其余 13 条证据是孤立点——看起来像"检索回来了但什么都没连上"。追下去不是前端画错，是**关系判定阶段丢边**，有三条独立路径：
@@ -534,9 +565,9 @@ app/
   llm/                 # OpenAI 兼容客户端、退避重试、录制回放缓存
   pipeline/            # decompose / forensics / retrieve / evidence_graph / graph / adjudicate / runner / graph_runner / models
   eval/                # 数据集、harness（断点续跑）、指标、基线/流水线 predictor、calibration（温度缩放/ECE/LOO）
-scripts/               # evaluate / calibrate / probe_models（模型配额体检）/ make_demo_images / prepare_fakeddit / smoke_llm
+scripts/               # evaluate / calibrate / probe_models（模型配额体检）/ make_demo_images / prepare_fakeddit / capture_snapshots（抓离线快照）/ smoke_llm
 static/                # 单页前端 + dashboard.html（纯 SVG）+ vendored cytoscape.min.js
-data/                  # 评测数据集与合成图像
+data/                  # 评测数据集、合成图像、演示用真实图片（demo_photos/）
 ```
 
 每次核查产出 JSONL trace 与证据图 JSON（`.data/traces/`），便于复盘与调试。

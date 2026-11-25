@@ -1,0 +1,6 @@
+{"id": "mp01", "text": "这张照片拍摄于2020年东京奥运会现场。", "label": "refuted", "image": "data\\demo_photos\\paris_eiffel.jpg", "source": "web-photo-demo"}
+{"id": "mp02", "text": "这张照片拍摄于巴黎埃菲尔铁塔下。", "label": "supported", "image": "data\\demo_photos\\paris_eiffel.jpg", "source": "web-photo-demo"}
+{"id": "mp03", "text": "这张照片拍摄于2024年北京半程马拉松比赛的现场。", "label": "supported", "image": "data\\demo_photos\\beijing_marathon.jpg", "source": "web-photo-demo"}
+{"id": "mp04", "text": "这张照片拍摄于2024年上海马拉松比赛的现场。", "label": "refuted", "image": "data\\demo_photos\\beijing_marathon.jpg", "source": "web-photo-demo"}
+{"id": "mp05", "text": "这张小票显示本次消费合计金额为150元。", "label": "supported", "image": "data\\demo_photos\\supermarket_receipt.jpg", "source": "web-photo-demo"}
+{"id": "mp06", "text": "这张小票显示本次消费合计金额为1500元。", "label": "refuted", "image": "data\\demo_photos\\supermarket_receipt.jpg", "source": "web-photo-demo"}

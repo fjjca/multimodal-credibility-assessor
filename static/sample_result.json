@@ -1,370 +1,543 @@
 {
- "verdict": "refuted",
- "verdict_label": "虚假不实",
- "confidence": 1.0,
- "confidence_raw": 1.0,
- "reason": "证据img1明确显示照片内容为'PARIS 2024 EIFFEL TOWER OLYMPIC GAMES'，与所有断言在时间和地点上存在直接矛盾。",
- "claims": [
-  {
-   "id": "c1",
-   "text": "这张照片拍摄于2020年"
-  },
-  {
-   "id": "c2",
-   "text": "照片拍摄地点为东京"
-  },
-  {
-   "id": "c3",
-   "text": "照片拍摄地点为东京奥运会现场"
-  }
- ],
- "evidence_chain": [
-  {
-   "id": "img1",
-   "title": "用户上传图像（VLM 取证）",
-   "url": "",
-   "source_tier": "uploaded"
-  }
- ],
- "graph": {
-  "n_claims": 3,
-  "n_evidence": 9,
-  "n_support": 0,
-  "n_contradict": 3,
-  "n_same_source": 1,
-  "n_neutral": 9
- },
- "graph_elements": {
-  "nodes": [
-   {
-    "data": {
-     "id": "c1",
-     "kind": "claim",
-     "label": "这张照片拍摄于2020年",
-     "source_tier": ""
+  "verdict": "refuted",
+  "verdict_label": "虚假不实",
+  "confidence": 1.0,
+  "confidence_raw": 1.0,
+  "reason": "证据显示照片实际为2024年北京马拉松而非上海马拉松，所有断言均被证伪",
+  "claims": [
+    {
+      "id": "c1",
+      "text": "这张照片拍摄于2024年"
+    },
+    {
+      "id": "c2",
+      "text": "照片拍摄地点在上海"
+    },
+    {
+      "id": "c3",
+      "text": "照片拍摄地点是上海马拉松比赛现场"
+    },
+    {
+      "id": "c4",
+      "text": "上海举办了马拉松比赛"
+    },
+    {
+      "id": "c5",
+      "text": "比赛发生在2024年"
     }
-   },
-   {
-    "data": {
-     "id": "c2",
-     "kind": "claim",
-     "label": "照片拍摄地点为东京",
-     "source_tier": ""
-    }
-   },
-   {
-    "data": {
-     "id": "c3",
-     "kind": "claim",
-     "label": "照片拍摄地点为东京奥运会现场",
-     "source_tier": ""
-    }
-   },
-   {
-    "data": {
-     "id": "e1",
-     "kind": "evidence",
-     "label": "PARIS, FRANCE: Summer olympic game Paris 2024 black background. Official logo 2024 in Paris on white blanket dark Eiffel Tower in night. Black edit space, Vertical ratio 16:9 for smartphone. Stock Photo | Adobe Stock",
-     "source_tier": "unknown",
-     "url": "https://stock.adobe.com/images/paris-france-summer-olympic-game-paris-2024-black-background-official-logo-2024-in-paris-on-white-blanket-dark-eiffel-tower-in-night-black-edit-space-vertical-ratio-16-9-for-smartphone/546829629",
-     "content": "JPEG\n\n#### CATEGORY\n\n#### RESTRICTIONS\n\nEditorial use only\n\n#### CREDIT LINE\n\nkovop58 - stock.adobe.com [...] Get 10 Stock images with a free trial\n\nGet 10 Stock images with a free trial\n\n## PARIS, FRANCE: Summer olympic game Paris 2024 black background. Official logo 2024 in Paris on white blanket dark Eiffel Tower in night. Black edit space, ...\n\n# PARIS, FRANCE: Summer olympic game Paris 2024 black background. Official logo 2024 in Paris on white blanket dark Eiffel Tower in night. Black edit space, Vertical ratio 16:9 for smartphone.\n\nby kovop58\n\n#### DIMENSIONS\n\n5315 x 9449px\n\n#### FILE TYPE\n\nJPEG",
-     "score": 0.53767866
-    }
-   },
-   {
-    "data": {
-     "id": "e2",
-     "kind": "evidence",
-     "label": "Paris 2024 Olympics | Selfies, Eiffel Tower in the background, Zinédine Zidane in the grandstands: day three of the Champions Park in photos",
-     "source_tier": "unknown",
-     "url": "https://www.olympics.com/en/news/paris-2024-olympics-selfies-tour-eiffel-zinedine-zidane-day-three-champions-park-photos",
-     "content": "# Paris 2024 Olympics | Selfies, Eiffel Tower in the background, Zinédine Zidane in the grandstands: day three of the Champions Park in photos\n\nOn Thursday 1 August, the Champions Park of the Paris 2024 Olympic Games celebrated its third opening day. Set up to celebrate all the medallists in the competition, it once again lived up to expectations, offering magical moments in a picture-postcard setting between the Eiffel Tower and Place du Trocadéro. [...] PARIS, FRANCE - AUGUST 01: Men's Artistic Gymnastics gold medalist Wataru Tanigawa of Team Japan takes a selfie with fans on day six of the Olympic Games Paris 2024 at Champions Park on August 01, 2024 in Paris, France. (Photo by Arturo Holmes/Getty Images) [...] A show that once again lived up to expectations. Despite fears about the weather forecast, the Champions Park of the Paris 2024 Olympic Games held firm and was finally able to welcome the athletes and the public on Thursday 1 August. The thousands of spectators who flocked to the foot of the Eiffel Tower were able to cheer on some of the Olympic heroes.",
-     "score": 0.46259445
-    }
-   },
-   {
-    "data": {
-     "id": "e3",
-     "kind": "evidence",
-     "label": "Mark Edward Harris on Instagram: \"The Eiffel Tower with the Olympic rings. The stage is set for the Paris 2024 Summer Olympics. #Paris…\"",
-     "source_tier": "social",
-     "url": "https://www.instagram.com/p/C90qYveSCb9",
-     "content": "# Mark Edward Harris on Instagram: \"The Eiffel Tower with the Olympic rings. The stage is set for the Paris 2024 Summer Olympics. #Paris…\"\n\nThe Eiffel Tower with the Olympic rings. The stage is set for the Paris 2024 Summer Olympics. \n \n#Paris2024 #Olympics #EiffelTower #NikonUSA #rings\n\n[Image: Photo by Mark Edward Harris on July 24, 2024.] [...] - Author: @markedwardharrisphoto (Mark Edward Harris) (verified)\n- Posted: 2024-07-24T22:51:24+00:00\n- Type: feed\n- Location: Eiffel Tower\n- Tagged: @olympics, @toureiffelofficielle, @markedwardharrisphoto, @zumapress\n- Hashtags: #paris2024 #olympics #eiffeltower #nikonusa #rings\n- Likes: 136\n- Comments: 7",
-     "score": 0.41917235
-    }
-   },
-   {
-    "data": {
-     "id": "e4",
-     "kind": "evidence",
-     "label": "The Olympic Games™ on Instagram: \"We’re fast approaching. 🥹 The Olympic Rings are on the Eiffel Tower. @Paris2024, let’s do this!\"",
-     "source_tier": "social",
-     "url": "https://www.instagram.com/p/C76D2dxiVla",
-     "content": "[Image: Photo by The Olympic Games™ on June 07, 2024.]\n\n[Image: Photo by The Olympic Games™ on June 07, 2024.]\n\n[Image: Photo by The Olympic Games™ on June 07, 2024.]\n\n[Image: Photo by The Olympic Games™ on June 07, 2024.]\n\n[Image: Video by The Olympic Games™ on June 07, 2024.]\n\n- Author: @olympics (The Olympic Games™) (verified)\n- Posted: 2024-06-07T08:07:20+00:00\n- Type: carousel_container\n- Mentions: @paris2024\n- Likes: 217705\n- Comments: 22925\n- Slides: 8 [...] # The Olympic Games™ on Instagram: \"We’re fast approaching. 🥹 The Olympic Rings are on the Eiffel Tower. @Paris2024, let’s do this!\"\n\nWe’re fast approaching. 🥹\n\nThe Olympic Rings are on the Eiffel Tower. @Paris2024, let’s do this!\n\n[Image: Photo by The Olympic Games™ on June 07, 2024.]\n\n[Image: Photo by The Olympic Games™ on June 07, 2024.]\n\n[Image: Video by The Olympic Games™ on June 07, 2024.]\n\n[Image: Photo by The Olympic Games™ on June 07, 2024.]",
-     "score": 0.4027444
-    }
-   },
-   {
-    "data": {
-     "id": "e5",
-     "kind": "evidence",
-     "label": "PARIS UNVEIL NEW EIFFEL TOWER-INSPIRED 2024 OLYMPIC GAMES BID LOGO - Ficts",
-     "source_tier": "unknown",
-     "url": "https://www.sportmoviestv.net/en/paris-2024-unveil-new-eiffel-tower-inspired-2024-olympic-games-bid-logo",
-     "content": "The logo features the number 24 twisted into the shape of the Eiffel Tower, which is thought to reference the last time Paris hosted the Olympics in 1924, as well as their latest effort to host the Games in 2024.\n\nParis, which has previously hosted two Games, is competing against Budapest, Rome and Los Angeles for the 2024 Olympics.\n\nThe International Olympic Committee (IOC) will choose the host city in September 2017. [...] The Paris 2024 Olympic bid committee unveiled their new Eiffel Tower-inspired logo at a Ceremony in the French capital. The design, claimed to be a modern interpretation of the iconic landmark, was projected symbolically into the Arc de Triomphe in front of a crowd of spectators and city officials and simultaneously onto the town hall in Marseille.",
-     "score": 0.3774259
-    }
-   },
-   {
-    "data": {
-     "id": "e6",
-     "kind": "evidence",
-     "label": "Photos: Iconic Paris landmarks double up as Olympic venues | NBC Olympics",
-     "source_tier": "unknown",
-     "url": "https://www.nbcolympics.com/news/photos-iconic-paris-landmarks-double-olympic-venues",
-     "content": "A general view of the Eiffel Tower as the sun sets before a beach volleyball match during the 2024 Paris Olympics.\n\nAndrew Nelles-USA TODAY Sports\n\nTHE GRAND PALAIS  \nUnveiled in 1900 for the Paris Universal Exhibition, the Grand Palais is visible across swaths of Paris thanks to its sweeping glass roof. Paris 2024 fencing and taekwondo take place under its stunning nave.\n\nA general view at the fencing competition during the 2024 Paris Olympics at Grand Palais. [...] Andrew P. Scott-USA TODAY Sports\n\nINVALIDES  \nA long stretch of lawn by the Seine that ends with the Hotel des Invalides, a 17th century complex of buildings that began life as a military hospital and also includes Napoleon's tomb, Invalides usually plays host to Parisians drinking wine or tossing a frisbee. During the Games, it hosts archery, road cycling and track events.\n\nHotel des Invalides viewed from the Eiffel Tower at the 2024 Paris Olympics.\n\nRob Schumacher-USA TODAY Sports [...] As sunny weather returns to France, the Paris Olympics are placing some of the capital's most famous landmarks center stage. Here is a look at where you can watch the sporting events:\n\nEIFFEL TOWER  \nThe beach volleyball takes place against one of the most iconic backdrops in Olympics history, with the Eiffel Tower looming over the athletes as they compete in a temporary stadium built in the Champ de Mars park.",
-     "score": 0.4819262
-    }
-   },
-   {
-    "data": {
-     "id": "e7",
-     "kind": "evidence",
-     "label": "5812 Paris 2024 logo 免版税图片、库存照片和图像 | Shutterstock",
-     "source_tier": "unknown",
-     "url": "https://www.shutterstock.com/search/paris-2024-logo",
-     "content": "Paris, France - July 23, 2024 : Giant LED Olympic rings on the Eiffel Tower for the Paris 2024 summer Olympics\n\nParis, France. The Arc de Triomphe with the Paralympic symbol attached and the Paris Olympic flag. July 17, 2024.\n\nParis 2024 travel logo with Eiffel Tower. Travel concept in Paris city or France country with 2024 number. Vector illustration\n\n24 July 2024, France Paris, Olympic games. High quality photo, Eiffel tower with Olympic Games Logo [...] 彩色奥运会抽象弧形彩虹波孤立，彩色横幅条纹。Eps10\n\n法国巴黎— 2024年12月27日：法国兴业银行一家分行的入口。法国兴业银行是法国领先的银行之一，也是历史最悠久的银行之一\n\nParis, France. The Arc de Triomphe with the Paralympic symbol attached and the Paris Olympic flag. July 17, 2024.\n\nParis, France-June 22, 2024 : The view of Eiffel tower with Olympic rings of the Paris 2024 Olympic Games. it is the most visited monument in the world located in 7th district of Paris. [...] 地标和纪念碑\n奥运会\n公共建筑\n竞技场和体育场\n团队运动\n奥林匹克五环\n艾菲爾鐵塔\n2024年夏季奧林匹克運動會\n巴黎市政厅\n奧林匹克運動會\n\n下一步",
-     "score": 0.45947018
-    }
-   },
-   {
-    "data": {
-     "id": "e8",
-     "kind": "evidence",
-     "label": "In pictures: Paris Olympics are a feast for the eyes as iconic venues take centre stage - France 24",
-     "source_tier": "unknown",
-     "url": "https://www.france24.com/en/europe/20240731-in-pictures-paris-olympics-are-a-feast-for-the-eyes-as-iconic-venues-take-centre-stage",
-     "content": "# In pictures: Paris Olympics are a feast for the eyes as iconic venues take centre stage\n\nFrom our special correspondent - The sporting competitions at the Paris Olympic Games are being staged at some of France’s most emblematic locations: the Palace of Versailles, the former bastion of the French monarchy; the final resting place of Napoleon at Les Invalides; that most Parisian of monuments, the Eiffel Tower. Photographers have been happily capturing the spectacle. [...] The sporting line-up includes equestrian events at Versailles, fencing at the Grand Palais, beach volleyball at the Eiffel Tower, and breakdancing at the Place de la Concorde. The beauty of the city backdrop has provided an assist to photographers trying to capture iconic sporting moments.\n\nKeywords for this article",
-     "score": 0.43194354
-    }
-   },
-   {
-    "data": {
-     "id": "img1",
-     "kind": "evidence",
-     "label": "用户上传图像（VLM 取证）",
-     "source_tier": "uploaded",
-     "url": "",
-     "content": "OCR：PARIS 2024 EIFFEL TOWER OLYMPIC GAMES\n图像描述：图片为一张纯色背景的图像，中央有黑色大写字母文字，内容为三行：第一行为'PARIS 2024'，第二行为'EIFFEL TOWER'，第三行为'OLYMPIC GAMES'。\n取证备注：图片文字明确显示为'PARIS 2024'，与帖子文本中'2020年东京奥运会'存在明显时间与地点冲突，属于旧图新用或篡改迹象。",
-     "score": 0.0
-    }
-   }
   ],
-  "edges": [
-   {
-    "data": {
-     "id": "edge0",
-     "source": "c1",
-     "target": "e1",
-     "relation": "neutral",
-     "weight": 0.0
-    }
-   },
-   {
-    "data": {
-     "id": "edge1",
-     "source": "c1",
-     "target": "e2",
-     "relation": "neutral",
-     "weight": 0.0
-    }
-   },
-   {
-    "data": {
-     "id": "edge2",
-     "source": "c1",
-     "target": "e3",
-     "relation": "neutral",
-     "weight": 0.0
-    }
-   },
-   {
-    "data": {
-     "id": "edge3",
-     "source": "c1",
-     "target": "img1",
-     "relation": "contradict",
-     "weight": 1.0
-    }
-   },
-   {
-    "data": {
-     "id": "edge4",
-     "source": "c2",
-     "target": "e2",
-     "relation": "neutral",
-     "weight": 0.0
-    }
-   },
-   {
-    "data": {
-     "id": "edge5",
-     "source": "c2",
-     "target": "e4",
-     "relation": "neutral",
-     "weight": 0.0
-    }
-   },
-   {
-    "data": {
-     "id": "edge6",
-     "source": "c2",
-     "target": "e5",
-     "relation": "neutral",
-     "weight": 0.0
-    }
-   },
-   {
-    "data": {
-     "id": "edge7",
-     "source": "c2",
-     "target": "img1",
-     "relation": "contradict",
-     "weight": 1.0
-    }
-   },
-   {
-    "data": {
-     "id": "edge8",
-     "source": "c3",
-     "target": "e6",
-     "relation": "neutral",
-     "weight": 0.0
-    }
-   },
-   {
-    "data": {
-     "id": "edge9",
-     "source": "c3",
-     "target": "e7",
-     "relation": "neutral",
-     "weight": 0.0
-    }
-   },
-   {
-    "data": {
-     "id": "edge10",
-     "source": "c3",
-     "target": "e8",
-     "relation": "neutral",
-     "weight": 0.0
-    }
-   },
-   {
-    "data": {
-     "id": "edge11",
-     "source": "c3",
-     "target": "img1",
-     "relation": "contradict",
-     "weight": 1.0
-    }
-   },
-   {
-    "data": {
-     "id": "edge12",
-     "source": "e3",
-     "target": "e4",
-     "relation": "same_source",
-     "weight": 0.5
-    }
-   }
-  ]
- },
- "graph_summary": [
-  {
-   "claim_id": "c1",
-   "text": "这张照片拍摄于2020年",
-   "support": [],
-   "contradict": [
+  "evidence_chain": [
     {
-     "evidence_id": "img1",
-     "title": "用户上传图像（VLM 取证）",
-     "url": "",
-     "source_tier": "uploaded",
-     "weight": 1.0
+      "id": "img1",
+      "title": "用户上传图像（VLM 取证）",
+      "url": "",
+      "source_tier": "uploaded"
     }
-   ]
-  },
-  {
-   "claim_id": "c2",
-   "text": "照片拍摄地点为东京",
-   "support": [],
-   "contradict": [
-    {
-     "evidence_id": "img1",
-     "title": "用户上传图像（VLM 取证）",
-     "url": "",
-     "source_tier": "uploaded",
-     "weight": 1.0
-    }
-   ]
-  },
-  {
-   "claim_id": "c3",
-   "text": "照片拍摄地点为东京奥运会现场",
-   "support": [],
-   "contradict": [
-    {
-     "evidence_id": "img1",
-     "title": "用户上传图像（VLM 取证）",
-     "url": "",
-     "source_tier": "uploaded",
-     "weight": 1.0
-    }
-   ]
-  }
- ],
- "forensics": {
-  "ocr_text": "PARIS 2024 EIFFEL TOWER OLYMPIC GAMES",
-  "description": "图片为一张纯色背景的图像，中央有黑色大写字母文字，内容为三行：第一行为'PARIS 2024'，第二行为'EIFFEL TOWER'，第三行为'OLYMPIC GAMES'。",
-  "overall": "inconsistent",
-  "consistency": [
-   {
-    "claim_id": "c1",
-    "consistency": "inconsistent",
-    "note": "图片文字明确显示为'PARIS 2024'，与断言c1中'2020年'不符。"
-   },
-   {
-    "claim_id": "c2",
-    "consistency": "inconsistent",
-    "note": "图片文字明确显示为'PARIS 2024'，地点为巴黎，与断言c2中'东京'不符。"
-   },
-   {
-    "claim_id": "c3",
-    "consistency": "inconsistent",
-    "note": "图片文字明确显示为'PARIS 2024'，地点为巴黎，且提及'OLYMPIC GAMES'但非'东京奥运会'，与断言c3中'东京奥运会现场'不符。"
-   }
   ],
-  "notes": "图片文字明确显示为'PARIS 2024'，与帖子文本中'2020年东京奥运会'存在明显时间与地点冲突，属于旧图新用或篡改迹象。",
-  "image": "05a06161289e_mm01.png"
- },
- "prosecutor": "断言c1、c2和c3均与提供的证据矛盾，因此这些断言是虚假的或不可信的。",
- "defender": "根据提供的证据，断言c1、c2和c3均不可信。证据img1显示照片上明确标注了'PARIS 2024 EIFFEL TOWER OLYMPIC GAMES'，这与断言中的'2020年东京'存在时间与地点上的冲突。因此，可以得出结论，照片并非拍摄于2020年东京，也不是东京奥运会现场。",
- "escalated": false,
- "human_review": false,
- "judge_model": "glm-4.5-flash",
- "usage": {
-  "total_tokens": 4805,
-  "n_calls": 8,
-  "cached": 0
- },
- "trace_id": "5b9618bb794f",
- "_meta": {
-  "case_id": "mm01",
-  "input_text": "这张照片拍摄于2020年东京奥运会现场。",
-  "input_image": "demo_images/mm01.png",
-  "note": "图文矛盾 → 判定虚假：图片内容是 PARIS 2024，帖子却说是 2020 年东京奥运会",
-  "captured_at": "2026-11-24T18:30:33",
-  "disclaimer": "离线快照：一次真实跑批的结果，已固化到本地，断网也能演示；不是本次实时跑批。"
- }
+  "graph": {
+    "n_claims": 5,
+    "n_evidence": 9,
+    "n_support": 4,
+    "n_contradict": 5,
+    "n_same_source": 2,
+    "n_neutral": 11
+  },
+  "graph_elements": {
+    "nodes": [
+      {
+        "data": {
+          "id": "c1",
+          "kind": "claim",
+          "label": "这张照片拍摄于2024年",
+          "source_tier": ""
+        }
+      },
+      {
+        "data": {
+          "id": "c2",
+          "kind": "claim",
+          "label": "照片拍摄地点在上海",
+          "source_tier": ""
+        }
+      },
+      {
+        "data": {
+          "id": "c3",
+          "kind": "claim",
+          "label": "照片拍摄地点是上海马拉松比赛现场",
+          "source_tier": ""
+        }
+      },
+      {
+        "data": {
+          "id": "c4",
+          "kind": "claim",
+          "label": "上海举办了马拉松比赛",
+          "source_tier": ""
+        }
+      },
+      {
+        "data": {
+          "id": "c5",
+          "kind": "claim",
+          "label": "比赛发生在2024年",
+          "source_tier": ""
+        }
+      },
+      {
+        "data": {
+          "id": "e1",
+          "kind": "evidence",
+          "label": "2024北京马拉松_新华网",
+          "source_tier": "unknown",
+          "url": "http://www.news.cn/sports/topic/2024bmls/index.htm",
+          "content": "2024北京马拉松暨全国马拉松锦标赛（第3站）落幕，3004人破三创纪录 11月3日，2024贝壳北京马拉松暨全国马拉松锦标赛（第3站）在天安门广场前鸣枪起跑，30000名选手踏上北马赛道，共赴双奥之城的“金秋奔跑之约”。 2024北京马拉松赛鸣枪开跑 2024北京马拉松官方宣传片上线 逐梦路，相见欢｜杨家玉、栾玉帅一起为北马打call！ 2024北京马拉松推广曲《非凡的赛道》发布 2024年北京马拉松将于11月3日开跑 北京马拉松：时代征程中的活力印记 坚持的力量：北马见证一路成长 汗水映照心灵，北马赛道上的精神洗礼 用脚步丈量人生，用行动传递能量 北马守护者：每一份坚守，都是责任的力量 北京马拉松：积极人生观的“能量补给站” 2024北京马拉松｜参赛选手跑过起点拱门 2024北京马拉松｜参赛选手在比赛中 2024北京马拉松｜参赛选手奔跑在长安街上 2024北京马拉松｜参赛选手从起点出发 2024北京马拉松｜参赛选手从起点出发 2024北京马拉松｜参赛选手在比赛中 2024北京马拉松｜参赛选手在赛后拥抱 2024北京马拉松｜参赛选手在比赛中 “直道”加速梦想 北马赛事起点的变与不变 [...] 北马赛事起点的变与不变 今年，北京马拉松组委会考虑到选手对集结空间和起跑速度的需求，经过反复推敲和研究，在延续赛事经典路线的基础上，对比赛起点进行了调整。 完赛奖牌印制错版 北马组委会第一时间致歉 针对2024北京马拉松完赛奖牌的Logo印制错误，北京马拉松组委会于5日发布赛事公告，表示将更新赛事奖牌寄送选手，并做好后续服务工作。 奥运健儿助阵北马 激励跑友突破自我 中国田径运动员杨家玉、中国游泳运动员汪顺以及中国艺术体操队教练安娜塔西亚·布利兹纽克在比赛当天现身起点，与现场的30000名跑者共同开启北马之旅，见证奥运精神闪耀“国马”赛道。 与“双奥之城”共奋进 北京马拉松描绘“健康中国”新图景 2024贝壳北京马拉松暨全国马拉松锦标赛（第3站）3日在天安门广场前鸣枪起跑，选手们踏上北马赛道，共赴双奥之城的“金秋奔跑之约”。 青年逐梦，从校园跑道迈向北马赛场 秋日暖阳映照在“鸟巢”和“水立方”之间的景观大道上，北京大学大四学生宫子卓在3日的北京马拉松赛场上奋力冲线，实现首马“破三”。 非洲选手包揽2024北京马拉松男、女冠军 [...] 埃塞俄比亚选手海勒、肯尼亚选手切普格诺分获男子组、女子组冠军。 2024北京马拉松三万人开跑 陈天宇刘敏分获国内组男女冠军 11月3日，2024北京马拉松鸣枪开跑。最终，埃塞俄比亚选手海勒夺取男子冠军，肯尼亚选手基普恩格诺获得女子冠军。中国选手陈天宇连续第二年斩获北马国内第一名，刘敏获得北马女子国内头名。 共赴双奥名城金秋奔跑之约｜2024北京马拉松182949人报名创新高 10月24日，在2024贝壳北京马拉松暨全国马拉松锦标赛（第3站）发布会上，北马组委会介绍了本届赛事基本信息、组织筹备情况，并发布了本届赛事全新的参赛服和完赛奖牌，同时推出了赛事宣传片和赛事推广曲。 2024贝壳北京马拉松二次抽签补录公告 \"为满足广大跑者的参赛需求，为大家提供更多的参赛机会，经组委会研究决定，在首轮未中签选手中进行二次抽签补录。\" 42个精选“北马故事”已出炉！ 快来pick你最喜爱的那一个 现在，这些精彩故事等你来投票。 北京马拉松启动报名 11月3日正式起跑 2024贝壳北京马拉松暨全国马拉松锦标赛（第3站）将于11月3日在天安门广场鸣枪起跑。 见字如面 不亦乐乎",
+          "score": 0.5357057
+        }
+      },
+      {
+        "data": {
+          "id": "e2",
+          "kind": "evidence",
+          "label": "30000名选手参赛 2024北京马拉松鸣枪开跑 - 中国日报网",
+          "source_tier": "mainstream",
+          "url": "https://cn.chinadaily.com.cn/a/202411/03/WS6726de59a310b59111da15a2.html",
+          "content": "关闭\n\n今日（11月3日）7时30分，2024北京马拉松暨全国马拉松锦标赛（第3站）在天安门广场鸣枪开跑。比赛共设马拉松、全国马拉松锦标赛两个项目，吸引了来自全国各地的30000名选手赴京参赛。\n\n记者在比赛现场看到，本届北京马拉松在沿袭经典路线的基础上首次调整了起点位置，起点拱门设置于天安门广场的东侧路，并向北前移100米。调整之后，选手们可以全部在广场东侧路集结，更加从容地进行着自己的赛前准备，随后保持直线方向起跑出发。\n\n在比赛过程中，选手们将途经西长安街、西单商场、民族文化宫、军事博物馆、中华世纪坛等北京地标性建筑，最终抵达比赛终点——奥林匹克公园中心区景观大道，比赛路线全长42.195公里。为确保现场选手的顺利完赛，赛事组委会也在沿途设置了多个补给站和移动卫生间，并在起点和终点以及自赛道5公里起，至32.5公里，每隔2.5公里设置固定医疗站，自34公里，每隔1公里设置固定医疗站。同时，411名裁判员、6700名志愿者以及190辆物资运输车也将全程为赛事提供保障服务。 [...] 此外，记者还了解到，在10月2日至5日的3天报名时间里，2024北马共吸引了来自43个国家和地区的182949名长跑爱好者报名参赛，这一数据也刷新了历届北马报名的人数纪录。\n\n（总台记者 康骏驰 陈宝善）",
+          "score": 0.48177385
+        }
+      },
+      {
+        "data": {
+          "id": "e3",
+          "kind": "evidence",
+          "label": "马拉松“超级周末”折射活力中国“加速度”--新蓝网",
+          "source_tier": "unknown",
+          "url": "https://www.cztv.com/newsDetail/706379",
+          "content": "据不完全统计，11月2日至3日的两天时间里，全国范围内举行的马拉松等各类路跑赛事超过30场。按照赛事规模计算，参赛跑者总人数约有40万人。在城市道路上，景区步道间，人们迈开脚步，舒展笑颜，自信奔跑。\n\nImage 14\n\n11月3日，参赛选手奔跑在长安街上。当日，2024北京马拉松赛暨全国马拉松锦标赛（第三站）鸣枪开跑。新华社记者 张晨霖 摄\n\n参赛热情远未饱和\n\n两天时间，超过30场比赛，40万人参赛，这样的数字乍听之下令人咋舌，但细细算来，又在情理之中。\n\n《2023中国路跑赛事蓝皮书》显示，2023年，全国共举办800人以上规模路跑赛事699场，总参赛人次605.19万，4月和11月全国举办的赛事数量均超过百场。而在中国马拉松热潮最高峰的2019年，各类规模路跑赛事数量甚至有超过1800场。\n\n一年52个周末，除去不适宜举行跑步赛事的冬夏两季，数百场赛事主要分布在春季和秋季。因此，在气候舒适、景色宜人的3、4月及9、10月出现赛事扎堆的“超级周末”不足为奇。 [...] 在北京的“鸟巢”外，来自内蒙古呼和浩特的跑友徐少博在参加完北马后，第一时间挂上了完赛奖牌，以“鸟巢”为背景，和跑友一起合影留念。\n\nImage 20\n\n11月3日，一名完赛选手（前）在奥林匹克公园内留影。新华社记者 陈钟昊 摄\n\n徐少博说，每次参加马拉松都会去到一座新的城市，每座城市都会把当地的文化融入赛事，展现城市风采。今年他还在老家呼和浩特以及福建厦门、河北张家口、内蒙古包头参加了马拉松赛事。“呼和浩特的特色就是大草原，官厅湖马拉松主推优美的生态环境，各地的完赛奖牌也各有特色，值得收藏。”他说。\n\n一场马拉松，并非42.195公里的枯燥奔跑。一个马拉松“超级周末”，也不是赛事与赛事的简单叠加。起点拱门前写满期待与憧憬的一个个面庞，完赛区域里洋溢幸福和满足的一张张笑脸，描绘出活力中国的精彩画卷，汇聚起体育强国建设道路上笃行致远的坚实跬步。\n\n \n\nImage 21\n\nCopyright 2009-2024 cztv.com 浙ICP备05052141号-1 | 浙公网安备 33010602002235号 | 信息网络传播视听节目许可证号：1107197",
+          "score": 0.4697635
+        }
+      },
+      {
+        "data": {
+          "id": "e4",
+          "kind": "evidence",
+          "label": "打卡“双奥之城”，北京马拉松完赛选手鸟巢合影",
+          "source_tier": "unknown",
+          "url": "https://m.bjnews.com.cn/detail/1730607963129179.html",
+          "content": "# 打卡“双奥之城”，北京马拉松完赛选手鸟巢合影\n\n新京报 记者 王飞 编辑 王子诚\n\n2024-11-03 14:58\n\n11月3日，奥林匹克公园中心区景观大道，参赛选手陆续跑过2024北京马拉松比赛终点。\n\n完赛后，外国选手在鸟巢前拍照打卡，感受“双奥之城”的独特魅力。\n\n不少参赛选手在鸟巢前拍摄完赛奖牌。\n\n参赛选手在完赛纪念点位打卡。\n\n放松区，参赛选手正在进行放松。\n\n现场参赛选手体验机器人按摩。  \n记者 王飞 摄影报道  \n编辑 王子诚 校对 赵琳\n\n新京报客户端\n\n好新闻 无止境\n\n新京报报料邮箱：82708677@bjnews.com.cn",
+          "score": 0.36647636
+        }
+      },
+      {
+        "data": {
+          "id": "e5",
+          "kind": "evidence",
+          "label": "图片专题 | 奔跑中国 - 中国日报网",
+          "source_tier": "mainstream",
+          "url": "https://cn.chinadaily.com.cn/a/202508/08/WS68953d50a310ebef36290eae.html",
+          "content": "关闭\n\n来源：中国日报网 2025-08-08 07:56\n\n分享到微信\n\n中国日报8月8日电（记者 魏晓昊）从万人参加的北京马拉松，到乡村田野间自发组织的健康跑；从都市白领的山间夜跑，到炫酷十足的科技竞跑。镜头中，不同年龄、职业的跑者挥洒汗水，在智能跑道上挑战自我，在绿水青山间畅享运动之乐，共同勾勒出一幅全民健身的活力画卷。\n\n在“健康中国2030”和“体重管理年”政策引领下，马拉松赛事已成为展示城市形象的新名片。科技与体育的深度融合，让全民健身更智能、更科学。与此同时，跑步经济的兴起正激活消费新动能：专业跑鞋国产化率持续提升，运动APP用户屡破新高，体育旅游带动乡村产业振兴，彰显出民生需求推动下的产业升级活力。\n\n这些充满动感的影像，既是人们追求健康生活的真实写照，也是中国式现代化的生动缩影。当马拉松赛道串联起历史街区与科创园区，当跑步APP数据汇入全民健康信息平台，“奔跑的中国”正以矫健步伐，跑出经济、科技、体育、民生协同发展的加速度，奔向更健康、更美好的未来。\n\n【责任编辑：严玉洁】\n\nCOMPO\n\nWS68953d50a310ebef36290eae [...] - 违法和不良信息举报\n- 互联网新闻信息服务许可证10120170006\n- 信息网络传播视听节目许可证0108263号\n- 京公网安备11010502032503号\n- 京网文\\0283-097号\n- 京ICP备13028878号-6\n\n中国日报网版权说明：凡注明来源为“中国日报网：XXX（署名）”，除与中国日报网签署内容授权协议的网站外，其他任何网站或单位未经允许禁止转载、使用，违者必究。如需使用，请与010-84883777联系；凡本网注明“来源：XXX（非中国日报网）”的作品，均转载自其它媒体，目的在于传播更多信息，其他媒体如需转载，请与稿件来源方联系，如产生任何问题与本网无关。\n\n版权保护：本网登载的内容（包括文字、图片、多媒体资讯等）版权属中国日报网（中报国际文化传媒（北京）有限公司）独家所有使用。 未经中国日报网事先协议授权，禁止转载使用。给中国日报网提意见：rx@chinadaily.com.cn\n\n×",
+          "score": 0.23423143
+        }
+      },
+      {
+        "data": {
+          "id": "e6",
+          "kind": "evidence",
+          "label": "北京马拉松，一同走过的42.195公里-新华网",
+          "source_tier": "unknown",
+          "url": "http://www.news.cn/sports/20241009/5bb9782ecfe04fcba2fd8dbcac9b9b31/c.html",
+          "content": "北京马拉松，一同走过的42.195公里-新华网 \n\n新华网 >  > 正文\n\n2024 10/09 13:23:23\n\n# 北京马拉松，一同走过的42.195公里\n\n字体： 小 中 大\n\n# 北京马拉松，一同走过的42.195公里\n\n2024-10-09 13:23:23  来源：北京马拉松官方微信公众号\n\n向3万名跑者敞开怀抱、热情相拥\n\n彼此诉说着一同走过的42个古都之秋\n\n  1981年9月27日，首届北京国际马拉松赛横空出世。赛事的举办吸引了全国人民的目光。\n\n  当时，中央电视台对赛事进行了卫星实况直播，这是我国首次实现大型体育赛事的直播。在当时的技术水平看来，这种方式堪称“新奇”。\n\n1981年9月27日\n\n  比赛当天，首都几十万人在赛道两旁为运动员呐喊加油，全国的电视观众守在电视屏幕前观看了这场激动人心的比赛。\n\n  从这一年起，北京国际马拉松赛便开启了它40多年的创新与奋进之路，也踏上了它和跑者们一同携手迈进的全民健康之路。 [...] 办人民满意的赛事，促进人类的发展进步，是北京国际马拉松赛肩负的责任。让赛场内外的每一个人都能从赛事中汲取能量，共谱“健康中国”的美好图景，是北京国际马拉松赛的使命。\n\n首开先河，长安街上流动的风景线\n\n  上世纪80年代，全球范围内已有很多知名马拉松赛事，我国也有个别市县举办了小型马拉松赛。人们对于首都北京能举办一场马拉松赛事充满了期待。\n\n  然而，对于刚刚改革开放的我们来说，在首都举办一场国际马拉松赛事无疑是困难的。\n\n  首先，为了让赛事彰显首都特色，达成在天安门起跑的目标就实属不易；\n\n  同时，在比赛期间，需要暂时切断西长安街及沿线的交通，这对于首都核心区的正常运行来说也是巨大的挑战；\n\n  此外，赛事将汇集来自世界各地的专业运动员，受制于当时的国力和技术水平限制，大赛举办经验的匮乏也是摆在眼前的现实。\n\n  但排除万难、达成目标的坚定信心，让一切梦想都变成了现实。\n\n  仅仅为了测量出准确的比赛路线，赛事组委会提前几个月便开始了周密部署。来自北京医学院（现北京大学医学部）和清华大学的体育老师们为了能规划出一条“完美”马拉松路线绞尽脑汁。 [...] 原定的赛事路线计划由从天安门广场正中至古城路口折返。然而，经反复测量发现，这个距离只有37.66公里，与马拉松赛事规定的42.195公里还有很大差距。\n\n  经过选线老师们反复斟酌，最终确定从天安门第50号灯杆起跑，绕广场两圈，经古城路口折返，再通过多个精心布局的转折点后，最终在天安门完成冲刺。\n\n  当年手绘出的这张路线图，成为了北京国际马拉松赛发展史上恒久的经典。\n\n1981年北京国际马拉松赛路线图\n\n  赛事路线的反复修订只是办赛过程中众多困难的缩影。服务人员、安全保障等诸多环节都是办赛过程中需要一一攻克的难关。\n\n  当时志愿者的概念尚未兴起，为了让赛事服务得到保障，原国家体委（现国家体育总局）赛前充分动员、组织了系统内的工作人员，由机关团委的骨干分子担纲了赛事保障的重任。\n\n  另外，“安全”也是保障工作的重中之重。为了保证赛事安全举办，由北京市公安局牵头，成立了专门的赛事安全委员会。\n\n  一场成功的赛事一定是多方通力合作的结果。事实证明，一切付出都是值得的。\n\n  当天安门广场鸣响起跑的“号角”，选手们奋力奔跑的身影，汇聚成了赛道上亮丽的风景线。",
+          "score": 0.2120688
+        }
+      },
+      {
+        "data": {
+          "id": "e7",
+          "kind": "evidence",
+          "label": "2024北京马拉松领物现场 创作灵感 马拉松 跑步  跑场马拉松爱上一座城 北京马拉松",
+          "source_tier": "social",
+          "url": "https://www.youtube.com/watch?v=nNvhBR0ri6I",
+          "content": "# 2024北京马拉松领物现场 创作灵感 马拉松 跑步 跑场马拉松爱上一座城 北京马拉松\n\n2024北京马拉松领物现场 创作灵感 马拉松 跑步  跑场马拉松爱上一座城 北京马拉松 \n  2024北京马拉松领物现场 创作灵感 马拉松 跑步  跑场马拉松爱上一座城 北京马拉松 \n 随拍,生活记录,日常vlog\n\n- Author: Khánh Nguyễn Văn\n- Channel: \n- Published: 2024-12-18\n- View count: 187 views\n\n## Related\n\n- \n- \n- \n- \n- \n- \n- \n- \n- \n- \n- \n- \n- \n-",
+          "score": 0.35164496
+        }
+      },
+      {
+        "data": {
+          "id": "e8",
+          "kind": "evidence",
+          "label": "北京马拉松奖牌印错Logo，组委会道歉_凤凰网",
+          "source_tier": "unknown",
+          "url": "https://sports.ifeng.com/c/8eGWPCUCLh9",
+          "content": "北京马拉松奖牌印错Logo，组委会道歉\n\n# 北京马拉松奖牌印错Logo，组委会道歉\n\n九派新闻\n\n来自湖北省\n\n2024北京马拉松比赛于11月3日进行，共有3万人踏上北马赛道。然而赛后有跑者发现，今年的北马奖牌上出现了一个错误——奖牌背面左下角的世界田联认证标志有明显错误。原本北京马拉松应为世界田联金标赛事（Gold Label Races），但是奖牌上却显示为精英赛事（Elite Label Races）。\n\n11月5日下午，北京马拉松组委会发布公告称，由于工作失误，导致奖牌出错，承诺会为完赛选手重新邮寄奖牌。\n\n组委会公告如下：\n\n由于工作失误，2024北京马拉松完赛奖牌背面的世界田联金标赛事Logo错印成了精英标牌赛事Logo，我们深表歉意。",
+          "score": 0.27367145
+        }
+      },
+      {
+        "data": {
+          "id": "img1",
+          "kind": "evidence",
+          "label": "用户上传图像（VLM 取证）",
+          "source_tier": "uploaded",
+          "url": "",
+          "content": "OCR：2024 北京马拉松\n图像描述：一张马拉松比赛现场的照片，大量参赛者在铺砌的道路上奔跑，背景有一个红色的拱门，上面有文字。参赛者穿着运动服，佩戴号码布，部分号码布上有“北京”字样。\n取证备注：图片中拱门文字明确显示为“2024 北京马拉松”，与帖子文本“2024年上海马拉松比赛”在地点和赛事名称上完全不符，属于旧图新用或移花接木。",
+          "score": 0.0
+        }
+      }
+    ],
+    "edges": [
+      {
+        "data": {
+          "id": "edge0",
+          "source": "c1",
+          "target": "e1",
+          "relation": "support",
+          "weight": 0.5
+        }
+      },
+      {
+        "data": {
+          "id": "edge1",
+          "source": "c1",
+          "target": "e2",
+          "relation": "support",
+          "weight": 0.8
+        }
+      },
+      {
+        "data": {
+          "id": "edge2",
+          "source": "c1",
+          "target": "e3",
+          "relation": "neutral",
+          "weight": 0.0
+        }
+      },
+      {
+        "data": {
+          "id": "edge3",
+          "source": "c1",
+          "target": "img1",
+          "relation": "contradict",
+          "weight": 1.0
+        }
+      },
+      {
+        "data": {
+          "id": "edge4",
+          "source": "c2",
+          "target": "e4",
+          "relation": "neutral",
+          "weight": 0.0
+        }
+      },
+      {
+        "data": {
+          "id": "edge5",
+          "source": "c2",
+          "target": "e5",
+          "relation": "neutral",
+          "weight": 0.0
+        }
+      },
+      {
+        "data": {
+          "id": "edge6",
+          "source": "c2",
+          "target": "e6",
+          "relation": "neutral",
+          "weight": 0.0
+        }
+      },
+      {
+        "data": {
+          "id": "edge7",
+          "source": "c2",
+          "target": "img1",
+          "relation": "contradict",
+          "weight": 1.0
+        }
+      },
+      {
+        "data": {
+          "id": "edge8",
+          "source": "c3",
+          "target": "e2",
+          "relation": "neutral",
+          "weight": 0.0
+        }
+      },
+      {
+        "data": {
+          "id": "edge9",
+          "source": "c3",
+          "target": "e4",
+          "relation": "neutral",
+          "weight": 0.0
+        }
+      },
+      {
+        "data": {
+          "id": "edge10",
+          "source": "c3",
+          "target": "e7",
+          "relation": "neutral",
+          "weight": 0.0
+        }
+      },
+      {
+        "data": {
+          "id": "edge11",
+          "source": "c3",
+          "target": "img1",
+          "relation": "contradict",
+          "weight": 1.0
+        }
+      },
+      {
+        "data": {
+          "id": "edge12",
+          "source": "c4",
+          "target": "e2",
+          "relation": "neutral",
+          "weight": 0.0
+        }
+      },
+      {
+        "data": {
+          "id": "edge13",
+          "source": "c4",
+          "target": "e4",
+          "relation": "neutral",
+          "weight": 0.0
+        }
+      },
+      {
+        "data": {
+          "id": "edge14",
+          "source": "c4",
+          "target": "e8",
+          "relation": "neutral",
+          "weight": 0.0
+        }
+      },
+      {
+        "data": {
+          "id": "edge15",
+          "source": "c4",
+          "target": "img1",
+          "relation": "contradict",
+          "weight": 1.0
+        }
+      },
+      {
+        "data": {
+          "id": "edge16",
+          "source": "c5",
+          "target": "e1",
+          "relation": "support",
+          "weight": 0.5
+        }
+      },
+      {
+        "data": {
+          "id": "edge17",
+          "source": "c5",
+          "target": "e2",
+          "relation": "support",
+          "weight": 0.8
+        }
+      },
+      {
+        "data": {
+          "id": "edge18",
+          "source": "c5",
+          "target": "e3",
+          "relation": "neutral",
+          "weight": 0.0
+        }
+      },
+      {
+        "data": {
+          "id": "edge19",
+          "source": "c5",
+          "target": "img1",
+          "relation": "contradict",
+          "weight": 1.0
+        }
+      },
+      {
+        "data": {
+          "id": "edge20",
+          "source": "e1",
+          "target": "e6",
+          "relation": "same_source",
+          "weight": 0.5
+        }
+      },
+      {
+        "data": {
+          "id": "edge21",
+          "source": "e2",
+          "target": "e5",
+          "relation": "same_source",
+          "weight": 0.5
+        }
+      }
+    ]
+  },
+  "graph_summary": [
+    {
+      "claim_id": "c1",
+      "text": "这张照片拍摄于2024年",
+      "support": [
+        {
+          "evidence_id": "e1",
+          "title": "2024北京马拉松_新华网",
+          "url": "http://www.news.cn/sports/topic/2024bmls/index.htm",
+          "source_tier": "unknown",
+          "weight": 0.5
+        },
+        {
+          "evidence_id": "e2",
+          "title": "30000名选手参赛 2024北京马拉松鸣枪开跑 - 中国日报网",
+          "url": "https://cn.chinadaily.com.cn/a/202411/03/WS6726de59a310b59111da15a2.html",
+          "source_tier": "mainstream",
+          "weight": 0.8
+        }
+      ],
+      "contradict": [
+        {
+          "evidence_id": "img1",
+          "title": "用户上传图像（VLM 取证）",
+          "url": "",
+          "source_tier": "uploaded",
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "claim_id": "c2",
+      "text": "照片拍摄地点在上海",
+      "support": [],
+      "contradict": [
+        {
+          "evidence_id": "img1",
+          "title": "用户上传图像（VLM 取证）",
+          "url": "",
+          "source_tier": "uploaded",
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "claim_id": "c3",
+      "text": "照片拍摄地点是上海马拉松比赛现场",
+      "support": [],
+      "contradict": [
+        {
+          "evidence_id": "img1",
+          "title": "用户上传图像（VLM 取证）",
+          "url": "",
+          "source_tier": "uploaded",
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "claim_id": "c4",
+      "text": "上海举办了马拉松比赛",
+      "support": [],
+      "contradict": [
+        {
+          "evidence_id": "img1",
+          "title": "用户上传图像（VLM 取证）",
+          "url": "",
+          "source_tier": "uploaded",
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "claim_id": "c5",
+      "text": "比赛发生在2024年",
+      "support": [
+        {
+          "evidence_id": "e1",
+          "title": "2024北京马拉松_新华网",
+          "url": "http://www.news.cn/sports/topic/2024bmls/index.htm",
+          "source_tier": "unknown",
+          "weight": 0.5
+        },
+        {
+          "evidence_id": "e2",
+          "title": "30000名选手参赛 2024北京马拉松鸣枪开跑 - 中国日报网",
+          "url": "https://cn.chinadaily.com.cn/a/202411/03/WS6726de59a310b59111da15a2.html",
+          "source_tier": "mainstream",
+          "weight": 0.8
+        }
+      ],
+      "contradict": [
+        {
+          "evidence_id": "img1",
+          "title": "用户上传图像（VLM 取证）",
+          "url": "",
+          "source_tier": "uploaded",
+          "weight": 1.0
+        }
+      ]
+    }
+  ],
+  "forensics": {
+    "ocr_text": "2024 北京马拉松",
+    "description": "一张马拉松比赛现场的照片，大量参赛者在铺砌的道路上奔跑，背景有一个红色的拱门，上面有文字。参赛者穿着运动服，佩戴号码布，部分号码布上有“北京”字样。",
+    "overall": "inconsistent",
+    "consistency": [
+      {
+        "claim_id": "c1",
+        "consistency": "inconsistent",
+        "note": "图片中拱门文字显示为“2024 北京马拉松”，与断言c1“2024年”在时间上不矛盾，但与帖子文本“2024年上海马拉松”冲突，且图片明确显示为北京马拉松，故与帖子文本矛盾。"
+      },
+      {
+        "claim_id": "c2",
+        "consistency": "inconsistent",
+        "note": "图片中拱门文字显示为“2024 北京马拉松”，与断言c2“上海”冲突，与帖子文本“上海”冲突。"
+      },
+      {
+        "claim_id": "c3",
+        "consistency": "inconsistent",
+        "note": "图片中拱门文字显示为“2024 北京马拉松”，与断言c3“上海马拉松比赛现场”冲突，与帖子文本“上海马拉松”冲突。"
+      },
+      {
+        "claim_id": "c4",
+        "consistency": "inconsistent",
+        "note": "图片中拱门文字显示为“2024 北京马拉松”，与断言c4“上海举办了马拉松比赛”冲突，与帖子文本“上海”冲突。"
+      },
+      {
+        "claim_id": "c5",
+        "consistency": "inconsistent",
+        "note": "图片中拱门文字显示为“2024 北京马拉松”，与断言c5“比赛发生在2024年”在时间上不矛盾，但与帖子文本“2024年上海马拉松”冲突，且图片明确显示为北京马拉松，故与帖子文本矛盾。"
+      }
+    ],
+    "notes": "图片中拱门文字明确显示为“2024 北京马拉松”，与帖子文本“2024年上海马拉松比赛”在地点和赛事名称上完全不符，属于旧图新用或移花接木。",
+    "image": "4fafe265bbc1_beijing_marathon.jpg"
+  },
+  "prosecutor": "根据提供的证据，断言c1至c5中的所有内容均存在矛盾证据，因此这些断言均不可信。",
+  "defender": "断言c1、c2、c3、c4和c5均不可信。证据图中的证据显示照片实际上是2024年北京马拉松比赛的现场，而非上海。因此，所有与上海相关的断言均与提供的证据矛盾。",
+  "escalated": false,
+  "human_review": false,
+  "judge_model": "zai-org/GLM-4.5-Air",
+  "usage": {
+    "total_tokens": 10334,
+    "n_calls": 10,
+    "cached": 0
+  },
+  "trace_id": "91df671ad34e",
+  "_meta": {
+    "case_id": "mp04",
+    "input_text": "这张照片拍摄于2024年上海马拉松比赛的现场。",
+    "input_image": "demo_photos/beijing_marathon.jpg",
+    "note": "图文矛盾 → 判定虚假：图中拱门写着 2024 北京半程马拉松，帖子却说是 2024 年上海马拉松",
+    "captured_at": "2026-11-25T13:40:18",
+    "disclaimer": "离线快照：一次真实跑批的结果，已固化到本地，断网也能演示；不是本次实时跑批。"
+  }
 }

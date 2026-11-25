@@ -11,6 +11,12 @@ out/
 data/raw/
 data/real_images/
 
+# 演示用真实图片：来源非开放许可，仅本地留存
+# 复现：.venv/Scripts/python -m scripts.fetch_demo_photos
+data/demo_photos/*.jpg
+data/demo_photos/*.jpeg
+data/demo_photos/*.png
+
 # 个人简历文案底稿，仅本地留存
 RESUME.md
 
