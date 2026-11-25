@@ -6,6 +6,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# RapidOCR 的 OpenCV 运行时依赖；本地 CPU 推理无需 GPU
+RUN apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt ./
 # 默认走清华镜像（境内构建快）；海外可 --build-arg PIP_INDEX_URL=https://pypi.org/simple
 ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple

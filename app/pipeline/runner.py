@@ -6,18 +6,17 @@ from pathlib import Path
 
 from app import obs
 from app.config import Settings, get_settings
-from app.eval.calibration import apply_temperature, load_temperature
+from app.eval.calibration import load_calibrator
 from app.llm.cache import ResponseCache
 from app.llm.client import LLMClient, LLMResult
 from app.pipeline.adjudicate import adjudicate
 from app.pipeline.decompose import decompose
 from app.pipeline.evidence_graph import build_evidence_graph
 from app.pipeline.forensics import (
-    forensics,
+    collect_forensics,
     image_evidence,
     image_query_hints,
     image_relations,
-    load_image_url,
 )
 from app.pipeline.graph import claim_evidence_summary, graph_elements, graph_stats, save_graph
 from app.pipeline.retrieve import FakeRetriever, TavilyRetriever, retrieve_evidence
@@ -67,16 +66,21 @@ def _build_result(
         {"id": i, "title": by_id[i].title, "url": by_id[i].url, "source_tier": by_id[i].source_tier}
         for i in verdict["evidence_chain"] if i in by_id
     ]
-    # 事后校准：仅变换上报置信度，编排路由/升级仍用原始 conf（两条 runner 共用此函数→parity 不变）
-    conf_raw = verdict["confidence"]
-    conf = conf_raw
-    if settings.enable_calibration and conf_raw is not None:
-        conf = apply_temperature(conf_raw, load_temperature(settings.calibrator_path))
+    conf_raw = verdict.get("confidence_raw", verdict["confidence"])
+    conf_pre_calibration = verdict.get("confidence_pre_calibration", verdict["confidence"])
+    conf = verdict["confidence"]
     result = {
         "verdict": verdict["verdict"],
         "verdict_label": VERDICT_LABELS.get(verdict["verdict"], verdict["verdict"]),
         "confidence": conf,
         "confidence_raw": conf_raw,
+        "confidence_pre_calibration": conf_pre_calibration,
+        "calibration_status": verdict.get("calibration_status", "disabled"),
+        "calibration_temperature": verdict.get("calibration_temperature", 1.0),
+        "graph_prior": verdict.get("graph_prior"),
+        "graph_prior_label": verdict.get("graph_prior_label", "insufficient"),
+        "graph_disagreement": verdict.get("graph_disagreement", False),
+        "graph_reasoning": verdict.get("graph_reasoning"),
         "reason": verdict["reason"],
         "claims": [{"id": c.id, "text": c.text} for c in claims],
         "evidence_chain": chain,
@@ -113,6 +117,9 @@ async def run_pipeline(
     trace_id: str | None = None,
 ) -> dict:
     settings = settings or get_settings()
+    if settings.enable_calibration:
+        calibration = load_calibrator(settings.calibrator_path, configured_model=settings.model_judge)
+        obs.log.info("calibration artifact", extra={"status": calibration["status"], "model": settings.model_judge})
     client = client or LLMClient(settings)
     if retriever is None:
         retriever = _default_retriever(settings)
@@ -155,8 +162,7 @@ async def run_pipeline(
 
     # 2. 多模态取证（VLM 图文一致性 + OCR；无图则跳过）
     await begin("forensics", "多模态取证")
-    image_url = load_image_url(image_path)
-    fr, fr_res = await forensics(client, image_url, text, claims)
+    fr, fr_res = await collect_forensics(client, image_path, text, claims, settings)
     img_ev = img_rels = None
     forensics_detail = None
     query_hints: dict[str, str] = {}
@@ -166,6 +172,10 @@ async def run_pipeline(
         query_hints = image_query_hints(fr)
         forensics_detail = {
             "ocr_text": fr.ocr_text,
+            "vlm_ocr_text": fr.vlm_ocr_text,
+            "ocr_engine": fr.ocr_engine,
+            "ocr_lines": [line.model_dump() for line in fr.ocr_lines],
+            "ocr_crosscheck": fr.ocr_crosscheck,
             "description": fr.description,
             "overall": fr.overall,
             "consistency": [
@@ -201,7 +211,9 @@ async def run_pipeline(
     # 4. 证据图构建
     await begin("graph", "证据图构建")
     g, relations, graph_results = await build_evidence_graph(
-        client, claims, evidences, claim_map, image_evidence=img_ev, image_relations=img_rels
+        client, claims, evidences, claim_map, image_evidence=img_ev, image_relations=img_rels,
+        independence=settings.enable_evidence_independence,
+        propagation_damping=settings.graph_propagation_damping,
     )
     stats = graph_stats(g)
     await done("graph", "证据图构建", stats, graph_results)

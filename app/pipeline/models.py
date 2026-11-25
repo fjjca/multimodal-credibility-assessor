@@ -81,8 +81,26 @@ class ClaimConsistency(BaseModel):
     note: str = ""
 
 
+class OcrLine(BaseModel):
+    text: str
+    confidence: float = 0.0
+
+
+class OcrResult(BaseModel):
+    engine: str = "rapidocr-onnxruntime"
+    available: bool = False
+    text: str = ""
+    lines: list[OcrLine] = []
+    error: str = ""
+    latency_ms: int = 0
+
+
 class ForensicsResult(BaseModel):
     ocr_text: str = ""
+    vlm_ocr_text: str = ""
+    ocr_engine: str = "vlm"
+    ocr_lines: list[OcrLine] = []
+    ocr_crosscheck: dict = {}
     description: str = ""
     overall: str = "uncertain"
     claims: list[ClaimConsistency] = []

@@ -180,11 +180,14 @@ async def test_runner_calibration_off_keeps_raw(tmp_path, monkeypatch):
     assert result["confidence_raw"] == 0.9
 
 
-async def test_runner_calibration_posthoc_and_parity(tmp_path, monkeypatch):
+async def test_runner_calibration_and_parity(tmp_path, monkeypatch):
     calls = []
     settings, client = _mock_client(tmp_path, monkeypatch, calls)
     cal_path = tmp_path / "calibrator.json"
-    cal_path.write_text(json.dumps({"temperature": 3.0}), encoding="utf-8")
+    cal_path.write_text(json.dumps({
+        "temperature": 3.0,
+        "model": {"configured": settings.model_judge, "actual_models": ["m"]},
+    }), encoding="utf-8")
     settings.enable_calibration = True
     settings.calibrator_path = str(cal_path)
 

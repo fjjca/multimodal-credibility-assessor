@@ -382,7 +382,64 @@ OCR 与图文一致性描述均正确，故取代 429 的 `glm-4.6v-flash` 上�
 
 诚实口径：n=6 太小，只用于**暴露短板**，不作为泛化指标；合成集 6/6 与真实图 5/6 放在一起看，才说明"合成数据高准确率 ≠ 真实场景高准确率"。
 
+## 第五轮深化：感知—证据图—裁决三层可靠性闭环
 
+前三轮修正解决了"图文矛盾被冲掉"、"检索噪声盖过图像"、"断言拆解丢事实"；这一轮不再加页面功能，而是把三个承重阶段做成**可测量、可消融、可归因**的工程能力。
+
+### 1. 证据图不再只是可视化：同源去偏 + 可信度传播
+
+旧实现的 `same_source` 边只用于画图，裁决器拿到的是来源权重文本，需要 LLM 自己心算；"图是裁决数据源"在算法层并不成立。现在：
+
+- **同源独立性折扣**：同一来源簇内、对同一断言有效的多条证据按 `1/√n` 折扣，避免一篇稿件被 N 家转载后重复计票。原始 `weight` 保留给可视化，裁决读取 `effective_weight`。
+- **断言级结构化指标**：每条断言输出去偏后的 `support_weight` / `contradict_weight` / `net_weight` / `evidence_coverage` / `graph_prior`，裁判不再只读一长串证据文本。
+- **二分图阻尼传播**：在断言↔证据图上做 Gauss-Seidel 符号传播，共享证据会把支持/矛盾信号传给相关断言；返回迭代次数与是否收敛。
+- **分歧治理而不是硬改判**：当 `supported/refuted` 与图先验强烈相反时，保留 LLM 裁决，下调置信度 15%（可配置），让强裁判升级/多轮/HITL 路径接手；结果显式带 `graph_disagreement`。
+
+实现：[`app/pipeline/graph_reasoning.py`](app/pipeline/graph_reasoning.py)、[`app/pipeline/graph.py`](app/pipeline/graph.py)、[`app/pipeline/adjudicate.py`](app/pipeline/adjudicate.py)。开关：`ENABLE_EVIDENCE_INDEPENDENCE`、`GRAPH_PROPAGATION_DAMPING`、`GRAPH_PRIOR_CONFLICT_PENALTY`。
+
+### 2. 感知层：本地 OCR 与 VLM 交叉校验
+
+针对 mp05 的实测失败，接入 `rapidocr-onnxruntime`（CPU 推理、零 API 费用）：
+
+- 本地 OCR 与 VLM **并行**执行；本地 OCR 负责文字/数字，VLM 负责语义描述与图文一致性。
+- 对金额、数量、编号等数值 token 做规范化比对；VLM 与本地 OCR 冲突时，以本地 OCR 文本为证据，并在取证卡显示"数字冲突 · 以本地 OCR 为准"。
+- 对金额类断言按本地 OCR 数字重算 `consistent/inconsistent`，避免 VLM 把 `150.00` 读成 `136.90` 后把真样本判假。
+- OCR 不可用时如实降级，不阻塞流水线；结果保留 `vlm_ocr_text`、`ocr_engine`、`ocr_lines`、`ocr_crosscheck`。
+
+实现：[`app/pipeline/ocr.py`](app/pipeline/ocr.py)、[`app/pipeline/forensics.py`](app/pipeline/forensics.py)。开关：`ENABLE_LOCAL_OCR`。Docker 已装 OpenCV 运行库。
+
+#### 真实照片复测（2026-11-25）
+
+同一组 3 张真实照片 × 正反断言，检索 on、cache off、并发 3、校准/HITL off，产物在 `out/photo_v2/`：
+
+| 指标 | 接入前 photo_v1 | 接入后 photo_v2 |
+|---|---:|---:|
+| 准确率 | 0.833（5/6） | 0.833（5/6） |
+| macro-F1 | 0.829 | 0.829 |
+| 弃权率 | 0.000 | 0.000 |
+| ECE / Brier | 0.125 / 0.170 | 0.185 / 0.113 |
+| 总 tokens | 46,629 | 54,856 |
+| 平均延迟 | 151 s/条 | 159 s/条 |
+
+- **mp05 的感知失败已修，端到端仍失败**：本地 OCR 与 VLM 都读出小票“合计金额：150.00”，两条断言均形成图像支持边、零矛盾边。首轮裁判却以 0.95 判 `refuted`；图先验 `+0.3581` 触发分歧降置信到 `0.8075` 并升级强裁判，但 `THUDM/GLM-4-9B-0414` 仍判反。最新归因规则把它准确标为 `adjudication`，而不是误报“零检索证据”。
+- **mp06 保持正确**：OCR 读出 `150.00`，断言 `1500` 被判矛盾。
+- **mp03 暴露交叉校验的已知边界**：VLM 读到拱门“2024 北京半程马拉松”，本地 OCR 只读到“北京”和选手号码布，漏掉拱门小字；全局数字集合比较因此出现 `2024` 差异。当前徽章会显示“数字冲突”，但这是**未做字段对齐的全图数字差异**，不等于该字段被读错，后续应改为标签/区域级比对。
+- **诚实结论**：P2 证明了“专用 OCR 修感知短板”的工程路径，但没有把 6 条准确率从 5/6 提升到 6/6；剩余瓶颈是裁判无视一致证据。n=6 且实际裁判跨两个模型，不能据此拟合当前校准器，本轮没有生成新的温度 artifact。
+
+### 3. 决策层：校准器版本化 + 路由真正使用校准后置信度
+
+见[置信度校准与评测 Dashboard](#置信度校准与评测-dashboard)。核心变化是校准从"只改展示数字"变成"参与升级、多轮辩论、HITL 的决策信号"，同时用模型绑定阻止旧校准器串用。
+
+### 4. 评测层：失败归因
+
+每条 eval 记录现在保留 `judge_model`、原始/校准前/校准后置信度、图指标、取证详情与检索开关。`app/eval/attribution.py` 用规则把错误/弃权样本归到：
+
+- `perception`：OCR 数字冲突、VLM 取证降级、图文矛盾方向错误；
+- `retrieval`：检索开启但零外部证据；
+- `relation`：候选证据全部落为 neutral；
+- `adjudication`：已有有效支持/矛盾边，最终裁决仍错误或弃权。
+
+归因是**定位下一轮实验方向的规则诊断，不是因果证明**。每次 `scripts.evaluate` 自动产出 `failure_attribution_*.json/.md`，也可用 `scripts.attribute_failures` 对历史记录补跑。
 
 **现象（2026-11-22）**：一条 5 断言 / 14 证据的文本核查，证据图上只有 **1 条支持边** + 4 条同源虚线，其余 13 条证据是孤立点——看起来像"检索回来了但什么都没连上"。追下去不是前端画错，是**关系判定阶段丢边**，有三条独立路径：
 
@@ -529,11 +586,11 @@ ENABLE_CALIBRATION=false ENABLE_RETRIEVAL=true LLM_CACHE_MODE=readwrite \
   .venv/Scripts/python -m scripts.evaluate --data data/eval_seed.jsonl --system pipeline --out out/calib_collect
 # 2) 拟合温度，落盘 .data/calibrator.json + .data/reliability.json
 .venv/Scripts/python -m scripts.calibrate --records "out/calib_collect/eval_pipeline_*.jsonl"
-# 3) 启用流水线校准（只变换上报置信度；路由/升级仍用原始 conf）
+# 3) 启用流水线校准（升级/多轮/HITL 均使用校准后置信度）
 ENABLE_CALIBRATION=true .venv/Scripts/python -m app
 ```
 
-**接入语义（保 parity）**：校准在两条 runner 共用的 `runner._build_result` 里、adjudicate（升级已用原始 conf 决策）**之后**应用，结果同时带 `confidence`（校准后）与 `confidence_raw`（原始）。因此 `ENABLE_CALIBRATION` 开/关不改变编排路由与调用顺序，linear/graph parity 不受影响；artifact 缺失时 `T=1.0` 静默不校准，流水线不中断。
+**版本化接入**：`scripts.calibrate` 现在把校准器绑定到 `provider:model`，并记录实际裁判模型列表。`judge_once` 在**图先验降置信之后、路由决策之前**应用温度缩放：强裁判升级、LangGraph 多轮辩论、HITL 复核都读取校准后的 `confidence`。结果同时保留 `confidence_raw`（模型原始值）、`confidence_pre_calibration`（图分歧治理后）、`confidence`（校准后）和 `calibration_status`。artifact 缺失、旧版未绑定模型、或当前裁判/兜底模型不在绑定列表时，状态分别为 `missing` / `legacy_unversioned` / `model_mismatch`，**拒绝静默套用 T**，路由退回原始置信度并打日志。两条 runner 共用同一路径，parity 不变。
 
 **Dashboard（`/dashboard.html`，纯 SVG 无 CDN）**：`GET /api/evals` 扫描 `out/**/eval_*.json` 汇总、`GET /api/calibration` 读 artifact，前端渲染①校准摘要卡（T、ECE/Brier 原始→校准→LOO）②**可靠性曲线**（校准前/后 vs 对角线 y=x，点大小∝样本数）③置信度分布直方图（原始 vs 校准后）④消融对比表 + accuracy/macro-F1 条形图。只读本地 artifact，不接受用户路径输入。
 
@@ -547,12 +604,12 @@ ENABLE_CALIBRATION=true .venv/Scripts/python -m app
 - **过度自信是子集/模型依赖的，不是全局常数**：硬子集（多 misleading 难例）裁判 conf≈0.9 但判对率仅 0.6 → 严重过度自信，T=5.6 大幅软化；全 seed 以易例为主、判对率 0.9≈平均 conf 0.88 → 已接近校准，T=0.85 反而轻微**抬升**（略欠自信）。
 - **LOO-CV 是小样本的诚实阀**：硬子集 n=5 时 in-sample ECE 减半但 LOO 反升（0.410），说明温度拟合方差大、改善不可信；全 seed n=10 时 LOO（0.087）优于原始（0.095），改善才站得住。Dashboard 对 n<20 显式告警。
 - **结论**：D1 的价值不是"免费涨点"，而是把"裁判到底可不可信"变成**可测量、可校正、可回退**的一等能力——ECE/Brier/LOO + 温度缩放 + 可靠性曲线，在过度自信时校正、在已校准时如实报告"无需校正"。这与"校准弃权比刷高准确率更重要"的取向一致。
-- **已知失效**：`.data/calibrator.json`（T=0.85）是在**链上重排前的旧裁判**上拟合的，换裁判后温度已失配（每个裁判的自信曲线不同）。当前 `ENABLE_CALIBRATION` 默认 false，故该 artifact 处于**未启用**状态、不影响线上输出；换过裁判后应重跑 `scripts.calibrate` 重新拟合，README 里不要把旧 T 当作当前裁判的校准结论。
+- **旧 artifact 的处置**：历史上 `.data/calibrator.json`（T=0.85）是在链上重排前的旧裁判上拟合的，没有模型绑定信息。现在它会被标为 `legacy_unversioned` 并拒绝套用，而不是继续默默影响输出；当前 `ENABLE_CALIBRATION` 默认 false。换裁判或改兜底链后，必须用当前模型的 eval 记录重新运行 `scripts.calibrate`，README 不把旧 T 当作当前裁判的校准结论。
 
 ## 测试
 
 ```bash
-.venv/Scripts/python -m pytest        # 155 项，覆盖客户端/缓存/重试与熔断/兜底链/参数兼容自愈/模型体检脚本/各流水线阶段/取证/路由/评测/API/可观测性/LangGraph 编排/循环辩论/检查点续跑/HITL 人工介入/置信度校准
+.venv/Scripts/python -m pytest        # 196 项，覆盖客户端/缓存/重试与熔断/兜底链/参数兼容自愈/各流水线阶段/本地OCR/图推理/路由/失败归因/评测/API/LangGraph/检查点/HITL/校准
 ```
 
 ## 项目结构
@@ -563,17 +620,106 @@ app/
   api.py / main.py     # FastAPI 路由 + SSE + 静态托管 + 根 /metrics
   obs.py               # 结构化 JSON 日志 + Prometheus 指标埋点
   llm/                 # OpenAI 兼容客户端、退避重试、录制回放缓存
-  pipeline/            # decompose / forensics / retrieve / evidence_graph / graph / adjudicate / runner / graph_runner / models
-  eval/                # 数据集、harness（断点续跑）、指标、基线/流水线 predictor、calibration（温度缩放/ECE/LOO）
-scripts/               # evaluate / calibrate / probe_models（模型配额体检）/ make_demo_images / prepare_fakeddit / capture_snapshots（抓离线快照）/ smoke_llm
+  pipeline/            # decompose / forensics / ocr / retrieve / evidence_graph / graph_reasoning / graph / adjudicate / runner / graph_runner / models
+  eval/                # 数据集、harness（断点续跑）、指标、基线/流水线 predictor、calibration（温度缩放/ECE/LOO）、attribution（失败归因）
+scripts/               # evaluate / calibrate / attribute_failures / probe_models / make_demo_images / fetch_demo_photos / prepare_fakeddit / capture_snapshots / smoke_llm
 static/                # 单页前端 + dashboard.html（纯 SVG）+ vendored cytoscape.min.js
 data/                  # 评测数据集、合成图像、演示用真实图片（demo_photos/）
 ```
 
 每次核查产出 JSONL trace 与证据图 JSON（`.data/traces/`），便于复盘与调试。
 
+## 产物与文件导航
+
+这一章把"代码在哪、跑完生成什么、哪些会进 Git"一次说清楚。路径均相对仓库根目录。
+
+### 源码与入口
+
+| 位置 | 用处 |
+|---|---|
+| `app/main.py` | FastAPI 入口、静态页/dashboard 托管、`/demo_photos` 演示图挂载、根 `/metrics` |
+| `app/api.py` | `/api/verify` 提交、SSE 进度、任务查询、HITL resume、`/api/evals`、`/api/calibration` |
+| `app/config.py` + `.env.example` | 模型角色、免费兜底链、检索/辩论/OCR/图推理/校准/LangGraph/HITL 开关；真实 key 只放本地 `.env` |
+| `app/pipeline/runner.py` | 手写直线流水线与结果组装；`ENABLE_LANGGRAPH=false` 时走这里 |
+| `app/pipeline/graph_runner.py` | LangGraph 编排、多轮辩论、检查点续跑、HITL interrupt |
+| `app/pipeline/forensics.py` | VLM 取证提示词、解析、图文一致性、图像证据与检索 hint |
+| `app/pipeline/ocr.py` | 本地 RapidOCR、数字规范化、VLM/OCR 交叉校验、金额类断言校正 |
+| `app/pipeline/evidence_graph.py` | 检索证据关系判定、neutral 补边、调用图推理 |
+| `app/pipeline/graph.py` | NetworkX 图构建、同源边、断言级汇总、Cytoscape JSON、图持久化 |
+| `app/pipeline/graph_reasoning.py` | 同源证据 `1/√n` 去偏、覆盖率、二分图阻尼可信度传播、图先验 |
+| `app/pipeline/adjudicate.py` | 控辩裁、图先验分歧降置信、校准后置信度升级 |
+| `app/eval/harness.py` | 并发评测、断点续跑、指标、自动失败归因报告 |
+| `app/eval/calibration.py` | 温度缩放、ECE/MCE/Brier、LOO-CV、版本化校准器加载 |
+| `app/eval/attribution.py` | perception/retrieval/relation/adjudication 失败归因 |
+| `scripts/evaluate.py` | 统一评测入口（baseline / baseline_fc / pipeline） |
+| `scripts/calibrate.py` | 从 eval JSONL 拟合温度并生成绑定裁判模型的 artifact |
+| `scripts/attribute_failures.py` | 对历史 eval JSONL 补做失败归因，不重跑推理 |
+| `scripts/fetch_demo_photos.py` | 下载并归一化 3 张演示照片；图片本身不入 Git |
+| `scripts/capture_snapshots.py` | 真实跑批后抓取完整结果，生成离线演示快照 |
+| `static/index.html` | 单页前端：上传、SSE 时间轴、取证卡、证据图、人读报告、离线演示 |
+| `static/dashboard.html` | 纯 SVG 评测 dashboard：可靠性曲线、置信度分布、消融对比、校准器失配提示 |
+| `static/vendor/cytoscape.min.js` | 本地 vendored Cytoscape，单页自包含、无 CDN |
+| `tests/` | 当前 196 项测试；新增 `test_ocr.py`、`test_graph_reasoning.py`、`test_calibration_routing.py`、`test_attribution.py` |
+
+### 单次核查产物（`.data/`，Git 忽略）
+
+| 位置 | 何时生成 | 用处 |
+|---|---|---|
+| `.data/uploads/<文件>` | 上传图片时 | 原始送检图片，流水线按路径读取 |
+| `.data/traces/<trace_id>.jsonl` | 每次核查完成 | 各阶段 detail/usage 的结构化 trace，用于复盘与成本核对 |
+| `.data/traces/<trace_id>_graph.json` | 每次核查完成 | 完整 NetworkX 节点/边/属性，可用 `load_graph` 复现 |
+| `.data/calibrator.json` | 运行 `scripts.calibrate` | 温度 + 绑定裁判模型；`ENABLE_CALIBRATION=true` 时加载 |
+| `.data/reliability.json` | 运行 `scripts.calibrate` | ECE/Brier/LOO、可靠性分箱、逐样本概率，供 dashboard 渲染 |
+| `.data/attribution/failure_attribution_*.json/.md` | 运行 `scripts.attribute_failures` | 历史评测的失败阶段归因汇总 |
+| `.data/langgraph_checkpoints.sqlite` | 仅 `ENABLE_CHECKPOINT=true` 或 `ENABLE_HITL=true` | LangGraph 超步检查点；日常关闭，避免磁盘膨胀 |
+| `.cache/llm/` | `LLM_CACHE_MODE=readwrite/replay` | OpenAI 兼容调用的录制回放缓存；`off` 时不读写 |
+
+### 一轮评测产物（`out/<run>/`，Git 忽略）
+
+| 位置 | 用处 |
+|---|---|
+| `checkpoint_<system>_<dataset>.jsonl` | 已完成样本 checkpoint；同目录重跑会跳过已完成 id，只补失败/未跑样本 |
+| `eval_<system>_<时间戳>.json` | 汇总指标：accuracy、弃权率、macro-F1、tokens、延迟、ECE/Brier、失败列表、归因汇总 |
+| `eval_<system>_<时间戳>.jsonl` | 逐样本记录：gold/verdict/confidence、judge_model、图指标、取证详情、usage、归因 |
+| `eval_<system>_<时间戳>.md` | 人读指标报告 |
+| `failure_attribution_<system>_<时间戳>.json` | 机器可读失败归因：四阶段数量、比例、样例 id |
+| `failure_attribution_<system>_<时间戳>.md` | 人读失败归因表；`scripts.evaluate` 每次自动生成 |
+
+复现命令：
+
+```bash
+# 完整流水线评测（真实免费模型；HITL 必须关闭）
+LLM_CACHE_MODE=off ENABLE_HITL=false \
+  .venv/Scripts/python -m scripts.evaluate --data data/multimodal_photo_demo.jsonl \
+  --system pipeline --out out/photo_v2 --concurrency 3
+
+# 从记录拟合绑定当前裁判的校准器（不重跑推理）
+.venv/Scripts/python -m scripts.calibrate \
+  --records "out/photo_v2/eval_pipeline_*.jsonl" --judge-model zhipu:glm-4.5-flash
+
+# 对历史记录补失败归因
+.venv/Scripts/python -m scripts.attribute_failures \
+  --records "out/photo_v1/eval_pipeline_*.jsonl" --out out/photo_v1 --stem photo_v1
+```
+
+### 演示素材与快照
+
+| 位置 | 是否入 Git | 用处 |
+|---|---|---|
+| `data/multimodal_photo_demo.jsonl` | 是 | 6 条真实照片评测/演示用例（3 图 × 正反断言） |
+| `data/demo_photos/*.jpg` | **否** | 3 张真实网络照片；来源非开放许可，仅本地留存 |
+| `data/demo_photos/SOURCES.md` | 是 | 图片来源 URL、许可 caveat、归一化参数 |
+| `static/sample_result.json` | 是 | mp04 北京/上海马拉松矛盾的真实跑批完整快照 |
+| `static/sample_result_supported.json` | 是 | mp02 埃菲尔铁塔支持结论的真实跑批完整快照 |
+| `DEMO.md` | **否** | 本地面试演示脚本与话术 |
+| `RESUME.md` | **否** | 本地简历底稿 |
+
+### 哪些产物不应该提交
+
+`.env`、`.data/`、`.cache/`、`out/`、`data/demo_photos/*.jpg`、`DEMO.md`、`RESUME.md` 都在 `.gitignore` 中。API key、用户上传图片、checkpoint、评测原始记录与来源受限照片都不要提交；可提交的是数据集 JSONL、源码、测试、`SOURCES.md` 与脱敏后的 `static/sample_result*.json`。
+
 ## 成本与限制
 
 - **成本**：默认全免费、预算 ≈ ¥0；升级付费裁判单条约 ¥0.003–0.005（付费模型放兜底链末位或 `MODEL_JUDGE_STRONG` 即可，见[模型编排](#模型编排先免费后付费链上顺序--优先级)）。免费档有账户级并发限制，客户端带并发上限 + 按角色重试预算 + 退避封顶 + 按模型熔断 + 跨平台兜底候选链；评测支持断点续跑。
-- **限制**：多模态评测基于小规模合成用例；单图输入；检索依赖 Tavily 免费档质量；**图像断言更依赖 VLM 取证质量**（图像证据已提权到与官方并列，VLM 误判会被放大）；裁决质量受免费模型能力约束；免费档 429 是常态，靠兜底链与链上重排缓解而非根治（跨平台兜底需自备 SiliconFlow key）。
-- **v2 路线**：反向搜图 / 图片挪用检测、视频与多图、Neo4j + 可信度传播 / 多跳推理、Redis/Celery、OTel/Langfuse 分布式追踪（在现有 Prometheus+JSON 之上）、本地 vLLM、React 前端。
+- **限制**：多模态评测只有 6 条真实照片 + 6 条合成用例，样本很小；单图输入；检索依赖 Tavily 免费档质量；本地 OCR 提升密集数字可靠性但不能替代所有版式/手写场景；图传播是内存中的轻量算法，尚不是多跳知识推理；裁决质量受免费模型能力约束；免费档 429 是常态，靠兜底链与链上重排缓解而非根治（跨平台兜底需自备 SiliconFlow key）。
+- **v2 路线**：反向搜图 / 图片挪用检测、视频与多图、Neo4j 持久化与多跳推理（可信度传播已在 NetworkX 内存图落地）、Redis/Celery、OTel/Langfuse 分布式追踪（在现有 Prometheus+JSON 之上）、本地 vLLM、React 前端。

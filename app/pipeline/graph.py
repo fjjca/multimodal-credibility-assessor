@@ -4,6 +4,11 @@ from pathlib import Path
 
 import networkx as nx
 
+from app.pipeline.graph_reasoning import (
+    aggregate_graph_prior,
+    apply_evidence_independence,
+    propagate_evidence_belief,
+)
 from app.pipeline.models import (
     TIER_WEIGHTS,
     Claim,
@@ -66,6 +71,10 @@ def graph_stats(g: nx.Graph) -> dict:
     return {
         "n_claims": sum(d.get("kind") == "claim" for _, d in g.nodes(data=True)),
         "n_evidence": sum(d.get("kind") == "evidence" for _, d in g.nodes(data=True)),
+        "n_external_evidence": sum(
+            d.get("kind") == "evidence" and d.get("source_tier") != "uploaded"
+            for _, d in g.nodes(data=True)
+        ),
         "n_support": rels.count("support"),
         "n_contradict": rels.count("contradict"),
         "n_same_source": rels.count("same_source"),
@@ -73,8 +82,10 @@ def graph_stats(g: nx.Graph) -> dict:
     }
 
 
-def claim_evidence_summary(g: nx.Graph) -> list[dict]:
-    """按断言聚合支持/矛盾证据(带权重)，供裁决器与前端证据链使用。"""
+def claim_evidence_summary(g: nx.Graph, reasoning: dict | None = None) -> list[dict]:
+    """按断言聚合支持/矛盾证据(去偏权重)与图推理指标，供裁决器与前端使用。"""
+    reasoning = reasoning or propagate_evidence_belief(g)
+    claim_metrics = reasoning.get("claims", {})
     out = []
     for node, data in g.nodes(data=True):
         if data.get("kind") != "claim":
@@ -85,21 +96,48 @@ def claim_evidence_summary(g: nx.Graph) -> list[dict]:
             nd = g.nodes[nb]
             if nd.get("kind") != "evidence":
                 continue
+            raw_weight = float(edge.get("raw_weight", edge.get("weight", 0.0)))
             item = {
                 "evidence_id": nb,
                 "title": nd.get("title", ""),
                 "url": nd.get("url", ""),
                 "source_tier": nd.get("source_tier", "unknown"),
-                "weight": edge.get("weight", 0.0),
+                "weight": float(edge.get("effective_weight", raw_weight)),
+                "raw_weight": raw_weight,
+                "independence": float(edge.get("independence", 1.0)),
             }
             if edge.get("relation") == "support":
                 support.append(item)
             elif edge.get("relation") == "contradict":
                 contradict.append(item)
+        support_weight = sum(item["weight"] for item in support)
+        contradict_weight = sum(item["weight"] for item in contradict)
+        metrics = claim_metrics.get(node, {})
         out.append(
-            {"claim_id": node, "text": data.get("text", ""), "support": support, "contradict": contradict}
+            {
+                "claim_id": node,
+                "text": data.get("text", ""),
+                "support": support,
+                "contradict": contradict,
+                "support_weight": round(support_weight, 4),
+                "contradict_weight": round(contradict_weight, 4),
+                "net_weight": round(support_weight - contradict_weight, 4),
+                "evidence_coverage": metrics.get("evidence_coverage", 0.0),
+                "graph_prior": metrics.get("graph_prior", 0.0),
+                "prior_label": metrics.get("prior_label", "insufficient"),
+            }
         )
     return out
+
+
+def graph_reasoning(g: nx.Graph, *, independence: bool = True, damping: float = 0.85) -> dict:
+    independence_stats = apply_evidence_independence(g) if independence else {"enabled": False}
+    reasoning = propagate_evidence_belief(g, damping=damping)
+    return {
+        "independence": independence_stats,
+        "propagation": reasoning,
+        "aggregate": aggregate_graph_prior(reasoning),
+    }
 
 
 def save_graph(g: nx.Graph, path: str | Path) -> None:
@@ -144,7 +182,9 @@ def graph_elements(g: nx.Graph) -> dict:
                 "source": a,
                 "target": b,
                 "relation": d.get("relation", ""),
-                "weight": d.get("weight", 0.0),
+                "weight": d.get("effective_weight", d.get("weight", 0.0)),
+                "raw_weight": d.get("raw_weight", d.get("weight", 0.0)),
+                "independence": d.get("independence", 1.0),
             }
         }
         for i, (a, b, d) in enumerate(g.edges(data=True))

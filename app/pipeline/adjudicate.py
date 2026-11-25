@@ -4,9 +4,11 @@ import re
 import networkx as nx
 from openai import BadRequestError
 
+from app.eval.calibration import apply_temperature, load_calibrator
 from app.eval.schema import parse_verdict
 from app.llm.client import LLMClient, LLMResult
 from app.pipeline.graph import claim_evidence_summary
+from app.pipeline.graph_reasoning import aggregate_graph_prior, propagate_evidence_belief
 from app.pipeline.models import Claim
 
 PROSECUTOR_SYSTEM = (
@@ -23,6 +25,8 @@ JUDGE_SYSTEM = (
     "你是裁判。综合断言、证据图（支持/矛盾证据及来源权重）以及控辩双方论证做出最终裁决。"
     "证据图是裁决的数据源：优先依据加权证据本身，而非双方的修辞。"
     "verdict 取 supported/refuted/misleading/unverifiable 之一；证据不足或支持/矛盾均衡时输出 unverifiable 弃权。"
+    "输入中的结构化图指标（去偏支持/矛盾权重、覆盖度、图先验）是辅助信号，不能替代证据原文；"
+    "若图先验与你的判断相反，应在理由中解释，不得无视矛盾证据。"
     "只输出 JSON：{\"verdict\": \"...\", \"confidence\": 0到1的小数, \"reason\": \"一句话理由\", \"evidence_chain\": [\"证据id\"]}。"
 )
 
@@ -30,19 +34,33 @@ _SNIPPET = 200
 
 
 def _graph_context(g: nx.Graph) -> str:
-    summary = claim_evidence_summary(g)
+    reasoning = propagate_evidence_belief(g)
+    summary = claim_evidence_summary(g, reasoning)
     if not any(s["support"] or s["contradict"] for s in summary):
         return "（证据图中没有任何支持或矛盾证据）"
-    lines = []
+    aggregate = aggregate_graph_prior(reasoning)
+    lines = [
+        "结构化图指标："
+        f"图先验={aggregate['graph_prior']}（{aggregate['prior_label']}），"
+        f"有效证据覆盖={aggregate['evidence_coverage']:.2f}，"
+        f"传播迭代={reasoning['iterations']}，收敛={reasoning['converged']}"
+    ]
     for s in summary:
-        lines.append(f"断言 {s['claim_id']}：{s['text']}")
+        lines.append(
+            f"断言 {s['claim_id']}：{s['text']}　"
+            f"去偏支持权重={s['support_weight']:.2f}　去偏矛盾权重={s['contradict_weight']:.2f}　"
+            f"覆盖度={s['evidence_coverage']:.2f}　图先验={s['graph_prior']:.2f}（{s['prior_label']}）"
+        )
         for rel, label in (("support", "支持"), ("contradict", "矛盾")):
             for item in s[rel]:
                 node = g.nodes[item["evidence_id"]]
                 snippet = (node.get("content") or node.get("title", ""))[:_SNIPPET]
+                independence = (
+                    f" 同源去偏系数={item['independence']:.2f}" if item["independence"] < 0.999 else ""
+                )
                 lines.append(
                     f"  [{label}] {item['evidence_id']} 来源={item['source_tier']} "
-                    f"权重={item['weight']:.2f} {item['title']}：{snippet}"
+                    f"去偏权重={item['weight']:.2f}{independence} {item['title']}：{snippet}"
                 )
     return "\n".join(lines)
 
@@ -104,8 +122,61 @@ def debate_base(claims: list[Claim], g: nx.Graph) -> str:
     return f"断言：\n{claims_text}\n\n证据图：\n{_graph_context(g)}"
 
 
+def attach_graph_reasoning(
+    verdict: dict,
+    g: nx.Graph | None,
+    *,
+    conflict_penalty: float = 0.15,
+) -> dict:
+    if g is None:
+        return verdict
+    reasoning = propagate_evidence_belief(g)
+    aggregate = aggregate_graph_prior(reasoning)
+    verdict["graph_prior"] = aggregate["graph_prior"]
+    verdict["graph_prior_label"] = aggregate["prior_label"]
+    verdict["graph_reasoning"] = reasoning
+    raw = verdict.get("confidence")
+    verdict["confidence_raw"] = raw
+    prior = aggregate["graph_prior"]
+    disagreement = bool(
+        raw is not None
+        and ((verdict["verdict"] == "supported" and aggregate["prior_label"] == "contradict" and prior < -0.35)
+             or (verdict["verdict"] == "refuted" and aggregate["prior_label"] == "support" and prior > 0.35))
+    )
+    verdict["graph_disagreement"] = disagreement
+    verdict["graph_conflict_penalty"] = conflict_penalty if disagreement else 0.0
+    if disagreement and raw is not None:
+        verdict["confidence"] = max(0.0, min(1.0, raw * (1.0 - conflict_penalty)))
+    return verdict
+
+
+def apply_confidence_calibration(verdict: dict, settings, actual_model: str) -> None:
+    raw = verdict.get("confidence")
+    verdict["confidence_pre_calibration"] = raw
+    if not settings.enable_calibration:
+        verdict["calibration_status"] = "disabled"
+        verdict["calibration_temperature"] = 1.0
+        return
+    calibrator = load_calibrator(
+        settings.calibrator_path,
+        configured_model=settings.model_judge,
+        actual_model=actual_model,
+    )
+    verdict["calibration_status"] = calibrator["status"]
+    verdict["calibration_temperature"] = calibrator["temperature"]
+    if calibrator["status"] == "ready" and raw is not None:
+        verdict["confidence"] = apply_temperature(raw, calibrator["temperature"])
+
+
 async def judge_once(
-    client: LLMClient, base: str, pros_arg: str, def_arg: str, model_override: str | None = None
+    client: LLMClient,
+    base: str,
+    pros_arg: str,
+    def_arg: str,
+    model_override: str | None = None,
+    *,
+    graph: nx.Graph | None = None,
+    graph_conflict_penalty: float = 0.15,
 ) -> tuple[dict, LLMResult]:
     judge_input = f"{base}\n\n控方论证：{pros_arg}\n\n辩方论证：{def_arg}"
     messages = [
@@ -125,6 +196,8 @@ async def judge_once(
     verdict = parse_judge_output(r.content)
     verdict["escalated"] = False
     verdict["judge_model"] = r.model
+    attach_graph_reasoning(verdict, graph, conflict_penalty=graph_conflict_penalty)
+    apply_confidence_calibration(verdict, client.settings, r.model)
     return verdict, r
 
 
@@ -153,12 +226,18 @@ async def adjudicate(
         pros_arg, r1 = await _argue(client, "prosecutor", PROSECUTOR_SYSTEM, base)
         def_arg, r2 = await _argue(client, "defender", DEFENDER_SYSTEM, base)
         results.extend([r1, r2])
-    verdict, r3 = await judge_once(client, base, pros_arg, def_arg)
-    results.append(r3)
     settings = client.settings
+    penalty = settings.graph_prior_conflict_penalty
+    verdict, r3 = await judge_once(
+        client, base, pros_arg, def_arg, graph=g, graph_conflict_penalty=penalty
+    )
+    results.append(r3)
     if needs_escalation(settings, verdict, r3.model):
         strong = settings.model_judge_strong
-        verdict, r4 = await judge_once(client, base, pros_arg, def_arg, model_override=strong)
+        verdict, r4 = await judge_once(
+            client, base, pros_arg, def_arg, model_override=strong,
+            graph=g, graph_conflict_penalty=penalty,
+        )
         results.append(r4)
         verdict["escalated"] = True
         verdict["judge_model"] = r4.model or strong.partition(":")[2]

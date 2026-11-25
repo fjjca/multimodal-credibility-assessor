@@ -130,7 +130,10 @@ async def test_calibration_missing(client, tmp_path, monkeypatch):
     monkeypatch.setattr("app.api.get_settings", lambda: settings)
     res = await client.get("/api/calibration")
     assert res.status_code == 200
-    assert res.json() == {"calibrator": None, "reliability": None}
+    payload = res.json()
+    assert payload["calibrator"] is None and payload["reliability"] is None
+    assert payload["runtime"]["status"] == "missing"
+    assert payload["runtime"]["enabled"] is False
 
 
 async def test_resume_unknown_task_404(client):

@@ -30,7 +30,7 @@ from app.pipeline.adjudicate import (
 from app.pipeline.decompose import decompose
 from app.pipeline.evidence_graph import build_evidence_graph
 from app.pipeline.forensics import (
-    forensics,
+    collect_forensics,
     image_evidence,
     image_query_hints,
     image_relations,
@@ -96,7 +96,9 @@ def build_pipeline_graph(settings, client, retriever, emit, trace_id, checkpoint
         await begin("forensics", "多模态取证")
         image_path = state.get("image_path")
         image_url = load_image_url(image_path)
-        fr, fr_res = await forensics(client, image_url, state["text"], state["claims"])
+        fr, fr_res = await collect_forensics(
+            client, image_path, state["text"], state["claims"], settings
+        )
         if fr is None:
             await emit("stage", {
                 "stage": "forensics", "label": "多模态取证", "status": "skipped",
@@ -112,6 +114,10 @@ def build_pipeline_graph(settings, client, retriever, emit, trace_id, checkpoint
         query_hints = image_query_hints(fr)
         detail = {
             "ocr_text": fr.ocr_text,
+            "vlm_ocr_text": fr.vlm_ocr_text,
+            "ocr_engine": fr.ocr_engine,
+            "ocr_lines": [line.model_dump() for line in fr.ocr_lines],
+            "ocr_crosscheck": fr.ocr_crosscheck,
             "description": fr.description,
             "overall": fr.overall,
             "consistency": [
@@ -147,6 +153,8 @@ def build_pipeline_graph(settings, client, retriever, emit, trace_id, checkpoint
         g, _relations, graph_results = await build_evidence_graph(
             client, state["claims"], state["evidences"], state["claim_map"],
             image_evidence=state.get("img_ev"), image_relations=state.get("img_rels"),
+            independence=settings.enable_evidence_independence,
+            propagation_damping=settings.graph_propagation_damping,
         )
         stats = graph_stats(g)
         entry = await done("graph", "证据图构建", stats, graph_results)
@@ -183,7 +191,8 @@ def build_pipeline_graph(settings, client, retriever, emit, trace_id, checkpoint
 
     async def judge_node(state: GraphState) -> dict:
         verdict, r = await judge_once(
-            client, state["debate_base"], state["pros_arg"], state["def_arg"]
+            client, state["debate_base"], state["pros_arg"], state["def_arg"],
+            graph=state["g"], graph_conflict_penalty=settings.graph_prior_conflict_penalty,
         )
         feedback = f"{verdict['verdict']}（置信度 {verdict['confidence']}）：{verdict['reason']}"
         return {"verdict": verdict, "judge_feedback": feedback, "results": [r], "adj_results": [r]}
@@ -194,7 +203,8 @@ def build_pipeline_graph(settings, client, retriever, emit, trace_id, checkpoint
     async def escalate_node(state: GraphState) -> dict:
         strong = settings.model_judge_strong
         verdict, r = await judge_once(
-            client, state["debate_base"], state["pros_arg"], state["def_arg"], model_override=strong
+            client, state["debate_base"], state["pros_arg"], state["def_arg"], model_override=strong,
+            graph=state["g"], graph_conflict_penalty=settings.graph_prior_conflict_penalty,
         )
         verdict["escalated"] = True
         verdict["judge_model"] = r.model or strong.partition(":")[2]

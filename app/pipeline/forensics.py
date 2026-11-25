@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import mimetypes
@@ -24,6 +25,7 @@ from app.pipeline.models import (
     Relation,
     normalize_consistency,
 )
+from app.pipeline.ocr import augment_forensics_with_ocr, run_local_ocr
 
 FORENSICS_SYSTEM = (
     "你是多模态取证员。给定一张图片和一段帖子文本（已拆成若干断言），完成四件事："
@@ -96,6 +98,7 @@ def parse_forensics(content: str, claims: list[Claim]) -> ForensicsResult:
             )
     return ForensicsResult(
         ocr_text=str(obj.get("ocr_text", "")),
+        vlm_ocr_text=str(obj.get("ocr_text", "")),
         description=str(obj.get("description", "")),
         overall=normalize_consistency(str(obj.get("overall", ""))),
         claims=parsed,
@@ -104,12 +107,14 @@ def parse_forensics(content: str, claims: list[Claim]) -> ForensicsResult:
 
 
 def image_evidence(fr: ForensicsResult) -> Evidence:
-    content = f"OCR：{fr.ocr_text}\n图像描述：{fr.description}"
+    content = f"OCR（{fr.ocr_engine}）：{fr.ocr_text}\n图像描述：{fr.description}"
+    if fr.vlm_ocr_text and fr.vlm_ocr_text != fr.ocr_text:
+        content += f"\nVLM OCR：{fr.vlm_ocr_text}"
     if fr.notes:
         content += f"\n取证备注：{fr.notes}"
     return Evidence(
         id=IMAGE_EVIDENCE_ID,
-        title="用户上传图像（VLM 取证）",
+        title="用户上传图像（本地 OCR + VLM 取证）" if fr.ocr_engine != "vlm" else "用户上传图像（VLM 取证）",
         url="",
         content=content,
         source_tier="uploaded",
@@ -206,3 +211,21 @@ async def forensics(
             overall="uncertain",
         ), None
     return parse_forensics(result.content, claims), result
+
+
+async def collect_forensics(
+    client: LLMClient,
+    image_path: str | None,
+    text: str,
+    claims: list[Claim],
+    settings,
+) -> tuple[ForensicsResult | None, LLMResult | None]:
+    """VLM 语义取证与本地 OCR 并行，再做数字级交叉校验。"""
+    image_url = load_image_url(image_path)
+    use_local_ocr = bool(settings.enable_local_ocr and image_path and image_url)
+    vlm_task = forensics(client, image_url, text, claims)
+    ocr_task = run_local_ocr(image_path) if use_local_ocr else asyncio.sleep(0, result=None)
+    (fr, fr_res), ocr = await asyncio.gather(vlm_task, ocr_task)
+    if fr is not None and ocr is not None:
+        fr = augment_forensics_with_ocr(fr, ocr, claims)
+    return fr, fr_res

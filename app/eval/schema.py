@@ -69,3 +69,4 @@ class Prediction(BaseModel):
     usage: dict = {}
     latency_ms: float = 0.0
     cached: bool = False
+    details: dict = {}

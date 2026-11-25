@@ -16,7 +16,7 @@ _EPS = 1e-6
 
 
 def load_temperature(path: str) -> float:
-    """读取校准器 artifact 的温度；缺失/损坏时返回 1.0（不校准），保证流水线不中断。"""
+    """读取校准器温度（兼容旧 artifact）；缺失/损坏时返回 1.0。"""
     p = Path(path)
     if not p.exists():
         return 1.0
@@ -24,6 +24,34 @@ def load_temperature(path: str) -> float:
         return float(json.loads(p.read_text(encoding="utf-8")).get("temperature", 1.0))
     except (json.JSONDecodeError, ValueError, TypeError, OSError):
         return 1.0
+
+
+def load_calibrator(
+    path: str,
+    *,
+    configured_model: str | None = None,
+    actual_model: str | None = None,
+) -> dict:
+    """加载版本化校准器；旧 artifact 或模型失配时拒绝静默套用。"""
+    p = Path(path)
+    if not p.exists():
+        return {"temperature": 1.0, "status": "missing", "artifact_model": None}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        temperature = float(data.get("temperature", 1.0))
+        if temperature <= 0:
+            raise ValueError("temperature must be positive")
+    except (json.JSONDecodeError, ValueError, TypeError, OSError):
+        return {"temperature": 1.0, "status": "invalid", "artifact_model": None}
+    model = data.get("model")
+    if not isinstance(model, dict) or not model.get("configured"):
+        return {"temperature": 1.0, "status": "legacy_unversioned", "artifact_model": model}
+    if configured_model and model.get("configured") != configured_model:
+        return {"temperature": 1.0, "status": "model_mismatch", "artifact_model": model}
+    actual_models = model.get("actual_models") or []
+    if actual_model and actual_models and actual_model not in actual_models:
+        return {"temperature": 1.0, "status": "model_mismatch", "artifact_model": model}
+    return {"temperature": temperature, "status": "ready", "artifact_model": model}
 
 
 def _clamp(p: float) -> float:

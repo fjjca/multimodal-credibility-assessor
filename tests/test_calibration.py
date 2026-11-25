@@ -143,5 +143,6 @@ def test_calibrate_script_dedup_and_artifacts(tmp_path, monkeypatch):
     rel = json.loads((out / "reliability.json").read_text(encoding="utf-8"))
     assert meta["n_records"] == 3  # 同文件传两次按 id 去重
     assert meta["n_attempted"] == 2
+    assert meta["model"]["configured"] == "unknown"
     assert rel["temperature"] == meta["temperature"]
     assert len(rel["reliability_raw"]) == 10

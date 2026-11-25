@@ -6,7 +6,7 @@ from openai import BadRequestError
 
 from app import obs
 from app.llm.client import LLMClient, LLMResult, is_moderation_error
-from app.pipeline.graph import build_graph
+from app.pipeline.graph import build_graph, graph_reasoning
 from app.pipeline.models import RELATIONS, Claim, Evidence, Relation
 
 RELATION_SYSTEM = (
@@ -86,6 +86,8 @@ async def build_evidence_graph(
     *,
     image_evidence: Evidence | None = None,
     image_relations: list[Relation] | None = None,
+    independence: bool = True,
+    propagation_damping: float = 0.85,
 ) -> tuple[nx.Graph, list[Relation], list[LLMResult]]:
     by_id = {e.id: e for e in evidences}
     relations: list[Relation] = []
@@ -110,4 +112,5 @@ async def build_evidence_graph(
     if image_relations:
         relations.extend(image_relations)
     g = build_graph(claims, all_evidences, relations)
+    graph_reasoning(g, independence=independence, damping=propagation_damping)
     return g, relations, results

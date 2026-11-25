@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     enable_retrieval: bool = True
     enable_debate: bool = True
     enable_escalation: bool = True
+    enable_evidence_independence: bool = True
+    enable_local_ocr: bool = True
+    graph_propagation_damping: float = 0.85
+    graph_prior_conflict_penalty: float = 0.15
     enable_langgraph: bool = False
     enable_checkpoint: bool = False
     checkpoint_path: str = ".data/langgraph_checkpoints.sqlite"

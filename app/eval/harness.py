@@ -5,6 +5,7 @@ import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
+from app.eval.attribution import write_attribution_report
 from app.eval.calibration import brier, ece_mce
 from app.eval.schema import ABSTAIN, VERDICTS, Prediction, Sample
 
@@ -111,6 +112,15 @@ async def run_eval(
             "usage": pred.usage,
             "latency_ms": pred.latency_ms,
             "cached": pred.cached,
+            "judge_model": pred.details.get("judge_model", ""),
+            "judge_configured_model": pred.details.get("judge_configured_model", ""),
+            "confidence_raw": pred.details.get("confidence_raw"),
+            "confidence_pre_calibration": pred.details.get("confidence_pre_calibration"),
+            "calibration_status": pred.details.get("calibration_status", "disabled"),
+            "graph_prior": pred.details.get("graph_prior"),
+            "graph_prior_label": pred.details.get("graph_prior_label"),
+            "graph_disagreement": pred.details.get("graph_disagreement", False),
+            "details": pred.details,
         }
         async with lock:
             done[sample.id] = rec
@@ -132,6 +142,7 @@ async def run_eval(
     }
 
     stamp = time.strftime("%Y%m%d_%H%M%S")
+    summary["attribution"] = write_attribution_report(records, out, f"{system_name}_{stamp}")
     (out / f"eval_{system_name}_{stamp}.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
     )

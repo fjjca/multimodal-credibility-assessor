@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 
 from app import obs
 from app.config import get_settings
+from app.eval.calibration import load_calibrator
 from app.pipeline.runner import run_pipeline
 
 router = APIRouter(prefix="/api")
@@ -188,6 +189,7 @@ async def list_evals():
                     "timestamp": summary.get("timestamp"),
                     "n_failed": summary.get("n_failed", 0),
                     "metrics": summary.get("metrics", {}),
+                    "attribution": summary.get("attribution"),
                 }
             )
     items.sort(key=lambda x: x.get("timestamp") or 0, reverse=True)
@@ -209,4 +211,6 @@ async def get_calibration():
         except (json.JSONDecodeError, OSError):
             return None
 
-    return {"calibrator": _read(cal_path), "reliability": _read(rel_path)}
+    runtime = {"enabled": settings.enable_calibration, "configured_model": settings.model_judge}
+    runtime.update(load_calibrator(settings.calibrator_path, configured_model=settings.model_judge))
+    return {"calibrator": _read(cal_path), "reliability": _read(rel_path), "runtime": runtime}

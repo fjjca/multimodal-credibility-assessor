@@ -164,11 +164,19 @@ function renderHistogram(box, rel) {
   box.appendChild(leg);
 }
 
-function renderSummary(box, rel, meta) {
+function renderSummary(box, rel, meta, runtime) {
   box.replaceChildren();
   if (!rel) {
     box.innerHTML = '<div class="empty">暂无校准结果。先采集评测记录，再运行 scripts.calibrate 拟合温度。</div>';
     return;
+  }
+  if (runtime && runtime.status !== "ready" && (runtime.enabled || ["legacy_unversioned", "model_mismatch"].includes(runtime.status))) {
+    const n = document.createElement("div");
+    n.className = "note";
+    n.textContent = runtime.enabled
+      ? `校准器当前未生效：${runtime.status}。配置裁判=${runtime.configured_model}；旧 artifact 或模型失配不会被静默套用。`
+      : `校准开关关闭，当前 artifact 也不会生效：${runtime.status}。配置裁判=${runtime.configured_model}；换裁判后需重新拟合。`;
+    box.appendChild(n);
   }
   const T = rel.temperature;
   const cards = [
@@ -332,7 +340,7 @@ async function load() {
     const r = await fetch("/metrics");
     if (r.ok) series = parseMetrics(await r.text());
   } catch (e) {}
-  renderSummary(document.getElementById("cal-summary"), cal.reliability, cal.calibrator);
+  renderSummary(document.getElementById("cal-summary"), cal.reliability, cal.calibrator, cal.runtime);
   renderReliability(document.getElementById("reliability"), cal.reliability);
   renderHistogram(document.getElementById("histogram"), cal.reliability);
   renderAblation(document.getElementById("ablation"), evals);

@@ -151,6 +151,18 @@ function renderForensics(fr, imgSrc) {
   badge.className = `badge ${fr.overall || "uncertain"}`;
   badge.textContent = CONSISTENCY_LABELS[fr.overall] || fr.overall || "无法判断";
   h.append(badge);
+  if (fr.ocr_engine && fr.ocr_engine !== "vlm") {
+    const ob = document.createElement("span");
+    ob.className = "badge";
+    ob.textContent = "本地 OCR + VLM";
+    h.append(ob);
+  }
+  if (fr.ocr_crosscheck?.status === "conflict") {
+    const cb = document.createElement("span");
+    cb.className = "badge inconsistent";
+    cb.textContent = "数字冲突 · 以本地 OCR 为准";
+    h.append(cb);
+  }
   // 降级（限流/熔断）必须显式标红：降级≠通过，不能被当成"无矛盾"
   if (/降级|限流|不可用/.test(fr.notes || "")) {
     const db = document.createElement("span");
@@ -172,6 +184,10 @@ function renderForensics(fr, imgSrc) {
     fields.append(d);
   };
   addField("OCR 文字", fr.ocr_text);
+  if (fr.vlm_ocr_text && fr.vlm_ocr_text !== fr.ocr_text) addField("VLM OCR", fr.vlm_ocr_text);
+  if (fr.ocr_engine && fr.ocr_engine !== "vlm") {
+    addField("OCR 引擎", `${fr.ocr_engine} · ${fr.ocr_lines?.length || 0} 行`);
+  }
   addField("图像描述", fr.description);
   addField("取证备注", fr.notes);
   if (imgSrc) {
@@ -803,6 +819,18 @@ function showResult(title, payload) {
     route.className = "route";
     route.textContent = `低置信度已升级强模型裁决：${payload.judge_model || ""}`;
     resultBox.append(route);
+  }
+  if (isObj && payload.graph_prior != null) {
+    const prior = document.createElement("div");
+    prior.className = "route";
+    const labels = { support: "支持", contradict: "矛盾", balanced: "均衡" };
+    const value = Number(payload.graph_prior);
+    const direction = labels[payload.graph_prior_label] || payload.graph_prior_label || "未知";
+    const conflict = payload.graph_disagreement
+      ? ` · 与裁决分歧，置信度 ${Number(payload.confidence_raw).toFixed(2)} → ${Number(payload.confidence).toFixed(2)}`
+      : "";
+    prior.textContent = `图先验 ${value >= 0 ? "+" : ""}${value.toFixed(2)}（${direction}）${conflict}`;
+    resultBox.append(prior);
   }
   if (isObj && payload.human_review) {
     v.append(document.createTextNode(" "), mkBadge("review", "人工复核"));
