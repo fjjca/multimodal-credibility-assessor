@@ -37,7 +37,16 @@
   .badge.uncertain { background: #334155; color: #cbd5e1; }
   .badge.degraded { background: #78350f; color: #fcd34d; }
   .claimline { font-size: 12px; color: #8b93a7; margin: 3px 0; }
-  .img-preview { max-height: 120px; border-radius: 8px; border: 1px solid #2a3348; margin-top: 10px; display: none; }
+  .img-preview { max-height: 200px; max-width: 100%; border-radius: 8px; border: 1px solid #2a3348; margin-top: 10px; display: none; cursor: zoom-in; }
+  .fr-media { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; margin: 8px 0 10px; }
+  .fr-thumb { max-height: 220px; max-width: 300px; border-radius: 8px; border: 1px solid #2a3348; cursor: zoom-in; flex: none; }
+  .fr-fields { flex: 1 1 260px; min-width: 0; }
+  .lightbox { position: fixed; inset: 0; z-index: 90; background: rgba(6,10,18,.92); display: none;
+    align-items: center; justify-content: center; padding: 28px; cursor: zoom-out; }
+  .lightbox img { max-width: 100%; max-height: 100%; border-radius: 10px; border: 1px solid #2a3348;
+    box-shadow: 0 24px 60px rgba(0,0,0,.6); }
+  .lightbox .lb-cap { position: absolute; bottom: 14px; left: 0; right: 0; text-align: center;
+    color: #8b93a7; font-size: 12px; }
   .route { font-size: 12px; color: #f59e0b; margin-top: 4px; }
   select, input[type=number] { background: #171e2e; color: #e6e9f0; border: 1px solid #2a3348; border-radius: 6px; padding: 8px; font-size: 13px; }
   .review-note { font-size: 12px; color: #f59e0b; margin: 6px 0; }
@@ -111,6 +120,7 @@
   </div>
   <div class="demo-note" id="demoHint"></div>
   <img id="preview" class="img-preview" alt="图像预览">
+  <div class="lightbox" id="lightbox"><img alt="放大查看"><div class="lb-cap">点击任意处关闭 · Esc</div></div>
   <div class="timeline" id="timeline"></div>
   <div class="result" id="review"></div>
   <div class="result" id="result"></div>
@@ -132,7 +142,7 @@ const submitBtn = document.getElementById("submit");
 
 const CONSISTENCY_LABELS = { consistent: "图文一致", inconsistent: "图文矛盾", uncertain: "无法判断" };
 
-function renderForensics(fr) {
+function renderForensics(fr, imgSrc) {
   const box = document.createElement("div");
   box.className = "forensics";
   const h = document.createElement("h3");
@@ -149,6 +159,9 @@ function renderForensics(fr) {
     h.append(db);
   }
   box.append(h);
+
+  const fields = document.createElement("div");
+  fields.className = "fr-fields";
   const addField = (label, value) => {
     if (!value) return;
     const d = document.createElement("div");
@@ -156,11 +169,25 @@ function renderForensics(fr) {
     const b = document.createElement("b");
     b.textContent = `${label}：`;
     d.append(b, document.createTextNode(value));
-    box.append(d);
+    fields.append(d);
   };
   addField("OCR 文字", fr.ocr_text);
   addField("图像描述", fr.description);
   addField("取证备注", fr.notes);
+  if (imgSrc) {
+    const media = document.createElement("div");
+    media.className = "fr-media";
+    const thumb = document.createElement("img");
+    thumb.className = "fr-thumb";
+    thumb.src = imgSrc;
+    thumb.alt = "送检图像";
+    thumb.title = "点击放大";
+    thumb.addEventListener("click", () => openLightbox(imgSrc));
+    media.append(thumb, fields);
+    box.append(media);
+  } else {
+    box.append(fields);
+  }
   for (const c of fr.consistency || []) {
     const line = document.createElement("div");
     line.className = "claimline";
@@ -784,7 +811,10 @@ function showResult(title, payload) {
     const human = document.createElement("div");
     const [claimsSec, basisSec, runinfo] = renderReport(payload);
     human.append(claimsSec, basisSec);
-    if (payload.forensics) human.append(renderForensics(payload.forensics));
+    if (payload.forensics) {
+      const src = preview.style.display === "block" && preview.src ? preview.src : null;
+      human.append(renderForensics(payload.forensics, src));
+    }
     if (payload.graph_elements) {
       const gb = renderGraph(payload.graph_elements, payload.evidence_chain);
       if (gb) human.append(gb);
@@ -819,17 +849,43 @@ function showResult(title, payload) {
 
 const fileInput = form.querySelector("input[name=image]");
 const preview = document.getElementById("preview");
+const lightbox = document.getElementById("lightbox");
+
+function openLightbox(src) {
+  lightbox.querySelector("img").src = src;
+  lightbox.style.display = "flex";
+}
+function closeLightbox() {
+  lightbox.style.display = "none";
+}
+lightbox.addEventListener("click", closeLightbox);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && lightbox.style.display === "flex") closeLightbox();
+});
+preview.addEventListener("click", () => {
+  if (preview.src) openLightbox(preview.src);
+});
+
 fileInput.addEventListener("change", () => {
   const file = fileInput.files[0];
   if (file) {
-    preview.src = URL.createObjectURL(file);
-    preview.style.display = "block";
+    setPreview(file);
   } else {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = null;
+    preview.removeAttribute("src");
     preview.style.display = "none";
   }
 });
 
 // 演示用：把示例图片塞进 file input（浏览器不允许直接设 value，只能走 DataTransfer）
+let previewUrl = null;
+function setPreview(blob) {
+  if (previewUrl) URL.revokeObjectURL(previewUrl);
+  previewUrl = URL.createObjectURL(blob);
+  preview.src = previewUrl;
+  preview.style.display = "block";
+}
 async function attachImage(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`示例图片缺失（${res.status}）`);
@@ -838,8 +894,7 @@ async function attachImage(url) {
   const dt = new DataTransfer();
   dt.items.add(file);
   fileInput.files = dt.files;
-  preview.src = URL.createObjectURL(file);
-  preview.style.display = "block";
+  setPreview(file);
 }
 
 const DEMO_CASES = {
@@ -874,10 +929,22 @@ async function runDemoLive(n) {
 
 async function loadDemoSnapshot(n) {
   const c = DEMO_CASES[n];
+  form.querySelector("textarea[name=text]").value = c.text;
+  let imgOk = true;
+  try {
+    await attachImage(c.image);
+  } catch (err) {
+    imgOk = false;
+    preview.style.display = "none";
+    preview.removeAttribute("src");
+    fileInput.value = "";
+  }
   const res = await fetch(c.snap);
   const payload = await res.json();
   showResult(`结论：${payload.verdict_label || payload.verdict}（离线快照，非本次实时跑批）`, payload);
-  demoHint.textContent = `${c.expect}　以上是一次真实跑批的结果快照，已固化在本地，断网或接口限流时照样能演示。`;
+  demoHint.textContent = imgOk
+    ? `${c.expect}　以上是一次真实跑批的结果快照，已固化在本地，断网或接口限流时照样能演示。`
+    : `${c.expect}　结果快照已载入；示例图片缺失（运行 scripts/fetch_demo_photos 可下载），取证卡里仍保留当时的 OCR 与图像描述。`;
 }
 
 document.getElementById("demoLive1").addEventListener("click", () => runDemoLive(1));
